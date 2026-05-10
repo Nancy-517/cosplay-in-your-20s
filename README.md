@@ -2,7 +2,28 @@
 
 一个面向大学生和二十多岁青年的 AI 人生剧本杀 / 多元成长平台 MVP。
 
+用户进入产品后，可以选择一张与自身成长处境高度相关的“人生地图”，例如保研考研、实习争夺、入职适应、亲密关系、返乡创业等，在一系列高压选择、多方博弈和关系变化中体验不同决策带来的结果。系统根据用户选择路径生成关系结算、人格标签、隐藏代价与平行人生结局，帮助青年在低风险的互动体验中理解成长选择的复杂性。
+
 第一版主题地图是《保研 / 考研：信息差之战》。用户会在 6 个节点中做出选择，看到五维状态变化、多方 NPC 动态、关系图谱与最终结局结算。
+
+## 项目目标
+
+- 做一个可独立体验的网页端 MVP
+- 验证青年成长剧本杀是否有真实吸引力
+- 验证《保研 / 考研：信息差之战》这张地图是否能击中目标用户
+- 用 PvP Lite 的方式让单人体验产生多方博弈感
+- 建立适合非技术主创协作的文档先行工作流
+
+当前第一版只做一张完整地图：
+
+- 保研 / 考研：信息差之战
+
+其他地图目前只作为“即将开放”展示：
+
+- 实习争夺
+- 入职适应
+- 亲密关系
+- 返乡创业
 
 ## 当前版本包含
 
@@ -27,12 +48,13 @@
 - React
 - 纯前端会话状态 `sessionStorage`
 
-## 目录结构
+## 当前目录结构
 
 ```txt
 cosplay-in-your-20s/
 ├─ README.md
 ├─ package.json
+├─ package-lock.json
 ├─ tsconfig.json
 ├─ next.config.ts
 ├─ .env.example
@@ -47,8 +69,12 @@ cosplay-in-your-20s/
 │  │  ├─ page.tsx
 │  │  ├─ maps/page.tsx
 │  │  ├─ character/page.tsx
-│  │  ├─ play/page.tsx
-│  │  ├─ result/page.tsx
+│  │  ├─ play/
+│  │  │  ├─ page.tsx
+│  │  │  └─ PlayClient.tsx
+│  │  ├─ result/
+│  │  │  ├─ page.tsx
+│  │  │  └─ ResultClient.tsx
 │  │  └─ api/
 │  │     ├─ ai-result/route.ts
 │  │     └─ npc-action/route.ts
@@ -71,6 +97,14 @@ npm install
 再启动开发环境：
 
 ```bash
+npm run dev
+```
+
+如果遇到 `Cannot find module './447.js'` 这类 Next 开发缓存错误，先清理再重启：
+
+```bash
+pkill -f "next dev" || true
+rm -rf .next
 npm run dev
 ```
 
@@ -115,9 +149,22 @@ NEXT_PUBLIC_FEEDBACK_URL=https://ucnaluyl2vsy.feishu.cn/share/base/form/shrcnw4P
 2. 在上述两个 route 文件中替换 mock 返回逻辑。
 3. 保持前端请求体结构不变，这样页面层不需要重写。
 
-## 当前默认假设
+## 产品边界
+
+当前默认假设：
 
 - 第一版不做登录
 - 第一版不做数据库
 - 第一版不做真实多人在线
+- 第一版不做支付
 - 第一版反馈入口使用飞书表单外链
+
+## 文档说明
+
+当前项目文档统一整理在 `docs/`：
+
+- `docs/00-project-brief.md`：项目背景与总目标
+- `docs/01-coding-agent-task.md`：代码侧职责边界
+- `docs/02-product-spec.md`：产品结构与体验设计
+- `docs/03-story-spec.md`：剧情系统说明
+- `docs/05-deployment.md`：部署说明
