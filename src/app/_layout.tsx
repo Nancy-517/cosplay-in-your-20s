@@ -1,44 +1,45 @@
-import * as Sentry from '@sentry/react-native';
 import { Stack } from 'expo-router';
 import { PortalHost } from '@rn-primitives/portal';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
-import { SessionProvider, useSession } from '@/ctx';
+import { useFonts } from 'expo-font';
+import { ActivityIndicator, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import "../global.css";
 
-Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
-});
+export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    'YangRenDongZhuShiTi-Semibold': {
+      uri: 'https://resource-static.bj.bcebos.com/fonts/YangRenDongZhuShiTi-Semibold.ttf',
+    },
+    'YangRenDongZhuShiTi-Regular': {
+      uri: 'https://resource-static.bj.bcebos.com/fonts/YangRenDongZhuShiTi-Regular.ttf',
+    },
+  });
 
-function RootLayoutNav() {
-  const { session, isLoading } = useSession();
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
-  if (isLoading) return null;
-
-  return (
-    <Stack screenOptions={{ headerShown: false }}>
-      {/* 公开路由：无需登录即可访问 */}
-      <Stack.Protected guard={!session}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-      </Stack.Protected>
-      {/* 受保护路由：guard=false 时路由从路由表移除，自动回落至最近可用路由 */}
-      <Stack.Protected guard={!!session}>
-        <Stack.Screen name="(app)" />
-      </Stack.Protected>
-    </Stack>
-  );
-}
-
-const RootLayout: React.FC = () => {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SessionProvider>
-        <RootLayoutNav />
-        <PortalHost />
-      </SessionProvider>
+      <StatusBar style="dark" />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="character" />
+        <Stack.Screen name="wish" />
+        <Stack.Screen name="round1" />
+        <Stack.Screen name="round2" />
+        <Stack.Screen name="round3" />
+        <Stack.Screen name="round4" />
+        <Stack.Screen name="round5" />
+        <Stack.Screen name="round6" />
+        <Stack.Screen name="result" />
+      </Stack>
+      <PortalHost />
     </GestureHandlerRootView>
   );
-};
-
-export default Sentry.wrap(RootLayout);
+}

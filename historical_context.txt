@@ -1,0 +1,4301 @@
+
+<action>
+**MessageAction** (source=EventSource.AGENT)
+CONTENT: 好的，我将为您开发一个以「保研考研」为首个人生地图的青年成长决策体验移动应用，让我先制定详细的实施计划
+</action>
+<action>
+SkillAction(skill='docx', args='', thought='', action=<ActionType.SKILL: 'skill'>, security_risk=None)
+</action>
+<observation>
+SkillObservation(content='Base directory for this skill: /workspace/app-brjk6jdk4ykh/.skills/docx\n\n# DOCX creation, editing, and analysis\n\n## Overview\n\nA user may ask you to create, edit, or analyze the contents of a .docx file. A .docx file is essentially a ZIP archive containing XML files and other resources that you can read or edit. You have different tools and workflows available for different tasks.\n\n## Workflow Decision Tree\n\n### Reading/Analyzing Content\nUse "Text extraction" or "Raw XML access" sections below\n\n### Creating New Document\nUse "Creating a new Word document" workflow\n\n### Editing Existing Document\n- **Your own document + simple changes**\n  Use "Basic OOXML editing" workflow\n\n- **Someone else\'s document**\n  Use **"Redlining workflow"** (recommended default)\n\n- **Legal, academic, business, or government docs**\n  Use **"Redlining workflow"** (required)\n\n## Reading and analyzing content\n\n### Text extraction\nIf you just need to read the text contents of a document, you should convert the document to markdown using pandoc. Pandoc provides excellent support for preserving document structure and can show tracked changes:\n\n```bash\n# Convert document to markdown with tracked changes\npandoc --track-changes=all path-to-file.docx -o output.md\n# Options: --track-changes=accept/reject/all\n```\n\n### Raw XML access\nYou need raw XML access for: comments, complex formatting, document structure, embedded media, and metadata. For any of these features, you\'ll need to unpack a document and read its raw XML contents.\n\n#### Unpacking a file\n`python ooxml/scripts/unpack.py <office_file> <output_directory>`\n\n#### Key file structures\n* `word/document.xml` - Main document contents\n* `word/comments.xml` - Comments referenced in document.xml\n* `word/media/` - Embedded images and media files\n* Tracked changes use `<w:ins>` (insertions) and `<w:del>` (deletions) tags\n\n## Creating a new Word document\n\nWhen creating a new Word document from scratch, use **docx-js**, which allows you to create Word documents using JavaScript/TypeScript.\n\n### Workflow\n1. **MANDATORY - READ ENTIRE FILE**: Read [`docx-js.md`](docx-js.md) (~500 lines) completely from start to finish. **NEVER set any range limits when reading this file.** Read the full file content for detailed syntax, critical formatting rules, and best practices before proceeding with document creation.\n2. Create a JavaScript/TypeScript file using Document, Paragraph, TextRun components (You can assume all dependencies are installed, but if not, refer to the dependencies section below)\n3. Export as .docx using Packer.toBuffer()\n\n## Editing an existing Word document\n\nWhen editing an existing Word document, use the **Document library** (a Python library for OOXML manipulation). The library automatically handles infrastructure setup and provides methods for document manipulation. For complex scenarios, you can access the underlying DOM directly through the library.\n\n### Workflow\n1. **MANDATORY - READ ENTIRE FILE**: Read [`ooxml.md`](ooxml.md) (~600 lines) completely from start to finish. **NEVER set any range limits when reading this file.** Read the full file content for the Document library API and XML patterns for directly editing document files.\n2. Unpack the document: `python ooxml/scripts/unpack.py <office_file> <output_directory>`\n3. Create and run a Python script using the Document library (see "Document Library" section in ooxml.md)\n4. Pack the final document: `python ooxml/scripts/pack.py <input_directory> <office_file>`\n\nThe Document library provides both high-level methods for common operations and direct DOM access for complex scenarios.\n\n## Redlining workflow for document review\n\nThis workflow allows you to plan comprehensive tracked changes using markdown before implementing them in OOXML. **CRITICAL**: For complete tracked changes, you must implement ALL changes systematically.\n\n**Batching Strategy**: Group related changes into batches of 3-10 changes. This makes debugging manageable while maintaining efficiency. Test each batch before moving to the next.\n\n**Principle: Minimal, Precise Edits**\nWhen implementing tracked changes, only mark text that actually changes. Repeating unchanged text makes edits harder to review and appears unprofessional. Break replacements into: [unchanged text] + [deletion] + [insertion] + [unchanged text]. Preserve the original run\'s RSID for unchanged text by extracting the `<w:r>` element from the original and reusing it.\n\nExample - Changing "30 days" to "60 days" in a sentence:\n```python\n# BAD - Replaces entire sentence\n\'<w:del><w:r><w:delText>The term is 30 days.</w:delText></w:r></w:del><w:ins><w:r><w:t>The term is 60 days.</w:t></w:r></w:ins>\'\n\n# GOOD - Only marks what changed, preserves original <w:r> for unchanged text\n\'<w:r w:rsidR="00AB12CD"><w:t>The term is </w:t></w:r><w:del><w:r><w:delText>30</w:delText></w:r></w:del><w:ins><w:r><w:t>60</w:t></w:r></w:ins><w:r w:rsidR="00AB12CD"><w:t> days.</w:t></w:r>\'\n```\n\n### Tracked changes workflow\n\n1. **Get markdown representation**: Convert document to markdown with tracked changes preserved:\n   ```bash\n   pandoc --track-changes=all path-to-file.docx -o current.md\n   ```\n\n2. **Identify and group changes**: Review the document and identify ALL changes needed, organizing them into logical batches:\n\n   **Location methods** (for finding changes in XML):\n   - Section/heading numbers (e.g., "Section 3.2", "Article IV")\n   - Paragraph identifiers if numbered\n   - Grep patterns with unique surrounding text\n   - Document structure (e.g., "first paragraph", "signature block")\n   - **DO NOT use markdown line numbers** - they don\'t map to XML structure\n\n   **Batch organization** (group 3-10 related changes per batch):\n   - By section: "Batch 1: Section 2 amendments", "Batch 2: Section 5 updates"\n   - By type: "Batch 1: Date corrections", "Batch 2: Party name changes"\n   - By complexity: Start with simple text replacements, then tackle complex structural changes\n   - Sequential: "Batch 1: Pages 1-3", "Batch 2: Pages 4-6"\n\n3. **Read documentation and unpack**:\n   - **MANDATORY - READ ENTIRE FILE**: Read [`ooxml.md`](ooxml.md) (~600 lines) completely from start to finish. **NEVER set any range limits when reading this file.** Pay special attention to the "Document Library" and "Tracked Change Patterns" sections.\n   - **Unpack the document**: `python ooxml/scripts/unpack.py <file.docx> <dir>`\n   - **Note the suggested RSID**: The unpack script will suggest an RSID to use for your tracked changes. Copy this RSID for use in step 4b.\n\n4. **Implement changes in batches**: Group changes logically (by section, by type, or by proximity) and implement them together in a single script. This approach:\n   - Makes debugging easier (smaller batch = easier to isolate errors)\n   - Allows incremental progress\n   - Maintains efficiency (batch size of 3-10 changes works well)\n\n   **Suggested batch groupings:**\n   - By document section (e.g., "Section 3 changes", "Definitions", "Termination clause")\n   - By change type (e.g., "Date changes", "Party name updates", "Legal term replacements")\n   - By proximity (e.g., "Changes on pages 1-3", "Changes in first half of document")\n\n   For each batch of related changes:\n\n   **a. Map text to XML**: Grep for text in `word/document.xml` to verify how text is split across `<w:r>` elements.\n\n   **b. Create and run script**: Use `get_node` to find nodes, implement changes, then `doc.save()`. See **"Document Library"** section in ooxml.md for patterns.\n\n   **Note**: Always grep `word/document.xml` immediately before writing a script to get current line numbers and verify text content. Line numbers change after each script run.\n\n5. **Pack the document**: After all batches are complete, convert the unpacked directory back to .docx:\n   ```bash\n   python ooxml/scripts/pack.py unpacked reviewed-document.docx\n   ```\n\n6. **Final verification**: Do a comprehensive check of the complete document:\n   - Convert final document to markdown:\n     ```bash\n     pandoc --track-changes=all reviewed-document.docx -o verification.md\n     ```\n   - Verify ALL changes were applied correctly:\n     ```bash\n     grep "original phrase" verification.md  # Should NOT find it\n     grep "replacement phrase" verification.md  # Should find it\n     ```\n   - Check that no unintended changes were introduced\n\n\n## Converting Documents to Images\n\nTo visually analyze Word documents, convert them to images using a two-step process:\n\n1. **Convert DOCX to PDF**:\n   ```bash\n   soffice --headless --convert-to pdf document.docx\n   ```\n\n2. **Convert PDF pages to JPEG images**:\n   ```bash\n   pdftoppm -jpeg -r 150 document.pdf page\n   ```\n   This creates files like `page-1.jpg`, `page-2.jpg`, etc.\n\nOptions:\n- `-r 150`: Sets resolution to 150 DPI (adjust for quality/size balance)\n- `-jpeg`: Output JPEG format (use `-png` for PNG if preferred)\n- `-f N`: First page to convert (e.g., `-f 2` starts from page 2)\n- `-l N`: Last page to convert (e.g., `-l 5` stops at page 5)\n- `page`: Prefix for output files\n\nExample for specific range:\n```bash\npdftoppm -jpeg -r 150 -f 2 -l 5 document.pdf page  # Converts only pages 2-5\n```\n\n## Code Style Guidelines\n**IMPORTANT**: When generating code for DOCX operations:\n- Write concise code\n- Avoid verbose variable names and redundant operations\n- Avoid unnecessary print statements\n\n## Dependencies\n\nRequired dependencies (install if not available):\n\n- **pandoc**: `sudo apt-get install pandoc` (for text extraction)\n- **docx**: `npm install -g docx` (for creating new documents)\n- **LibreOffice**: `sudo apt-get install libreoffice` (for PDF conversion)\n- **Poppler**: `sudo apt-get install poppler-utils` (for pdftoppm to convert PDF to images)\n- **defusedxml**: `pip install defusedxml` (for secure XML parsing)', observation=<ObservationType.SKILL: 'skill'>, skill='docx', success=True, data={'skill_path': '/workspace/miaoda_skills/prompts/system/docx/SKILL.md', 'scripts_path': '/workspace/miaoda_skills/prompts/system/docx/scripts'})
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && pandoc --track-changes=all tasks/md_20260520_145945_2.docx -o tasks/doc2.md 2>&1; echo "---PDF---"; python3 -c "
+import subprocess
+result = subprocess.run(['pdftotext', 'tasks/md_20260520_145941_1.pdf', 'tasks/pdf1.txt'], capture_output=True, text=True)
+print(result.stdout, result.stderr)
+" 2>&1
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+---PDF---
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cat /workspace/app-brjk6jdk4ykh/tasks/doc2.md
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+这个东西的真正意义还没有被设计成可体验的机制
+
+玩家为什么要玩？
+
+玩家每一步在纠结什么？
+
+玩家做选择时失去什么、得到什么？
+
+玩家玩完之后会记住什么？
+
+玩家为什么愿意再玩一次，或者拉别人一起玩？
+
+【未来，投资人、用户、市场】
+
+这个产品不是没有价值，而是现在还没有把价值产品化。​
+
+真正有差异化的点是：把年轻人在升学、实习、入职中的隐性博弈，转化成一个可玩、可复盘、低风险的角色扮演系统。
+
+这是一个面向年轻人的角色扮演式生涯博弈平台，让用户在低风险虚拟场景中体验信息差、合作、背叛、信任修复和边界选择，并通过复盘降低现实试错成本。
+
+真实痛点？足够独特？规模化？商业化？
+
+不是做娱乐游戏，也不是做心理测评，而是做一种"社会场景预演"。
+
+机会在于场景可以扩展：保研、考研、实习、入职、社团竞选、合租、创业组队、亲密关系、家庭沟通，都可以做成地图。
+
+可能路径包括校园工作坊、团体体验课、生涯教育工具、心理成长活动、剧本杀式线下体验、职业规划课程配套、在线互动内容订阅等。
+
+### **好的游戏策划需要的几种能力**
+
+第一种能力是
+**体验定义能力**。你要能说清楚玩家玩完之后应该产生什么感觉。比如你这个项目，玩家玩完之后不应该只是说"我测出来我是某某人格"，而应该说：
+
+我刚才好像真的为了一个机会，变成了我不太想成为的人。
+
+原来我一直以为合作很天真，但在这个局里，合作反而是更高级的策略。
+
+这就是体验目标。
+
+第二种能力是
+**机制设计能力**。机制就是让玩家体验到某种东西的规则。你想让玩家感受到"囚徒困境"，那就不能只写一句"你们可以合作也可以背叛"。你要设计出一个局面：如果我合作但别人背叛，我会亏；如果我背叛但别人合作，我短期赚；如果大家都背叛，最后都不舒服；如果大家都合作，长期收益最高。这个收益结构，就是机制。
+
+第三种能力是
+**反馈设计能力**。玩家做完选择之后，游戏必须告诉他"这个选择改变了什么"。不是只显示
+信任 -10，而是让 NPC
+对他说话变冷，让群聊里多出一句阴阳怪气，让某个隐藏机会关闭。玩家要感觉到：我的选择被世界记住了。
+
+第四种能力是
+**节奏控制能力**。一个局不能一直平，也不能一直炸。要有铺垫、试探、误会、反转、摊牌、复盘。你现在页面没有力度，很大程度是因为没有"爆点"。一个好游戏哪怕很短，也要有一个让玩家记住的瞬间。
+
+第五种能力是
+**迭代能力**。游戏策划不是坐在房间里一次性想出完美方案，而是让人试玩，看他们哪里笑、哪里沉默、哪里无聊、哪里想讨论，然后改。游戏尤其依赖测试。你现在技术同学给的反馈，其实就是非常宝贵的第一次用户测试。
+
+产品策划角度：游戏闭环太弱
+
+用户体验角度：代入感、紧张感、复盘欲
+
+## 游戏体验过程
+
+1.  首页，全览地图，简要游戏说明
+
+2.  进入角色。人物介绍、目标掉落、局势概览。
+
+    有人反馈记不住谁是谁，玩家名字和身份以及相互之间的关系。
+
+3.  游戏开始之前，许一个愿望吧，就像你刚来到大学，未谙世事，拥有所有梦想期待与想象那样......
+
+    （请玩家输入，最后结果页要拿出来比对。
+
+    结尾藏刀。资源有限，无论如何，皆有得失。
+
+    可以做成一个对比，最后回望一下自己当初的模样......）
+
+4.  游戏正式开始。
+
+**多人博弈设计**
+
+结构化自由
+
+4-6轮，固定流程
+
+-公开事件出现
+
+-每个玩家收到自己的私密信息
+
+-玩家选择行动
+
+-系统公布部分结果
+
+-NPC 或其他玩家反应
+
+-进入下一轮
+
+-最终摊牌复盘
+
+-收到私密信息之后，可以掉落提示卡，帮助玩家分析局势。
+
+现在共享，可能失去信息差；
+
+延迟共享，能保住优势但会损害信任；
+
+只发一部分，看似体面但其实在控局；
+
+私下给盟友，形成小圈子但会引发他人警惕。
+
+画风变暗，把囚徒困境局面，摆在台面上，体验这个博弈过程。
+
+"这一天晚上，你做了一个梦......
+
+每个人都被关在一个立方体里面。
+
+（象征着困境）"
+
+所有人手里都有一部分资料。
+
+如果大家都共享，每个人最终收益都比较高。
+
+如果只有一个人隐瞒，他短期收益最高。
+
+如果大家都隐瞒，所有人都错过关键信息，最终收益都下降。
+
+提示：
+
+关键是，这是重复博弈，不是一次选择。
+
+一次性囚徒困境里，背叛往往很诱人。
+
+但重复博弈里，信任、声誉和长期合作会变得重要。
+
+第 1 轮：资料是否共享
+
+第 2 轮：导师信息是否互通
+
+第 3 轮：盟友失误是否帮忙补救
+
+第 4 轮：最后入口是否抢占
+
+如果一个人前面一直合作，后面别人更可能帮他。如果一个人前面一直隐瞒，后面即使他说真话，别人也不信。
+
+「合作不是天真，而是一种需要制度、记忆和复盘支撑的长期策略。
+
+」
+
+摊牌复盘。尽自己可见。
+
+## 角色设计
+
+每人两个目标
+
+公开目标：大家都希望顺利上岸，维持体面关系。
+
+私密目标：每个人都有自己的隐藏优势和焦虑。
+
+### **资源设计**
+
+信息卡：你知道别人不知道的消息。
+
+信任标记：别人是否愿意和你交换信息。
+
+机会点：导师沟通、推荐信、夏令营入口。
+
+压力值：压力越高，越容易做短期选择。
+
+声誉值：影响最终大家怎么看你。
+
+重点是每种资源都要有用途。
+
+信息卡可以交换、隐瞒、公开、伪装成不重要。
+
+信任标记可以解锁私聊和联盟。
+
+机会点决定最终结果。
+
+压力值高会让你不能选择某些"长期主义"行动。
+
+声誉值影响结局复盘。
+
+这样状态才不是摆设。
+
+### **行动设计：不要只给固定选项，给"行动卡"​**
+
+把玩家每轮可做的事情设计成行动卡，而不是剧情选项。
+
+比如每轮玩家从下面选一个行动：
+
+共享：公开一条信息，增加群体信任，但减少个人信息差。
+
+试探：向某人询问一条关键信息，有可能获得线索，也可能引发警惕。
+
+结盟：和某人达成私下互助，双方获得短期保护，但会被其他人怀疑。
+
+保留：暂时不说出信息，保住优势，但信任下降。
+
+抢占：优先申请某个机会，资源上升，但声誉可能受损。
+
+澄清：公开解释自己的行为，降低误会，但暴露部分策略。
+
+托举：帮助别人获得机会，自己短期吃亏，但长期信任上升。
+
+然后让玩家选择对象：
+
+对林亦然
+
+对许知夏
+
+对沈砚
+
+对全体群聊
+
+对导师窗口
+
+再选择表达方式：
+
+直接
+
+委婉
+
+模糊
+
+强势
+
+沉默
+
+这样组合出来的行动就多了。
+
+## 结局页
+
+1.  结算庭审（类似法庭的深棕色画面。）
+
+    下面有abcd所有玩家，我们第一次面对面坦诚的看看自己都在做什么。
+
+    接受着彼此的审判。更多的是，自己对自己的审判。
+
+    法官（系统）宣读判决书，你获得了什么，失去了什么。
+
+    拿出线索卡：
+
+你在第 2 轮没有追问沈砚的暗示，导致你错过了提前沟通窗口。
+
+你在第 3 轮延迟共享资料，林亦然从那一刻开始不再主动给你信息。
+
+你在第 5 轮选择公开澄清，虽然失去了一部分效率，但保住了群体信任。
+
+2.  自由交流环节。
+
+    我们都是自己的律师，为自己的行为，辩护。
+
+    然后想方设法攻击对方。
+
+    但也有人在此环节会选择坦诚沟通。
+
+    在这一刻，我们终于都清晰地看见了所有人的真实想法。
+
+    或许我们的初心无可厚非，但是做事情的方式、一种外在的局限与约束，
+
+    没能使我们达到最初想一起去的地方。
+
+    摊牌复盘，列出这个游戏里面，你做过所有的选项卡、行动卡、资源卡。
+
+    真正意义上的复盘。
+
+    列出清晰的时间点、行动、决策。
+
+3.  代价清单。cost list
+
+4.  命运档案
+
+    生成你的xx人格，并给出模糊解释。
+
+5.  心愿便利贴。（开始首尾呼应了）
+
+    系统问你几个问题
+
+    "你是否曾经动摇过------
+
+我当时为什么那么选？
+
+如果是你你会怎么选？
+
+我们现实中是不是也经常这样？
+
+如果我全程合作，会不会被利用？
+
+如果我全程自保，会不会赢但失去信任？
+
+如果我精算平衡，会不会最后没有人真正相信我？
+
+如果我短期让利，会不会换来长期联盟？
+
+"那么在此刻，你有一个机会，留下你的骄傲与遗憾......"
+
+留言墙。一颗大树。
+
+（灵感来源：北航图书馆一楼的便利贴墙，啊哈哈哈哈）
+
+此刻，玩家，（你）站在这里，仰望着这颗参天大树，突然觉得，原来保研这一场没有硝烟的战争，已经有这么多人曾经和我一样，经历过种种，来到这里。
+
+你突然发现树上好像挂着什么东西。
+
+走近一看，原来它的树叶上是千千万万便利贴组成的。
+
+你随机挑选了几个，（上面都是每一个用户留下来的真实语录）
+
+eg
+
+「很多关系破裂不是因为某个人天生坏，而是因为信息不透明、收益结构不合理、缺乏信任机制。」
+
+「看见黑暗之后，仍然理解合作为什么珍贵。」
+
+随后你也把你刚才那一张便利贴挂了上去。
+
+随后释然地笑了。
+
+不管怎么样，不管得失如何，你都在二十岁，又成长了一点。
+
+（哇塞，完了，要实现不了了吗......）
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cat /workspace/app-brjk6jdk4ykh/tasks/pdf1.txt
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && python3 -c "
+import subprocess
+result = subprocess.run(['pdftotext', '-layout', 'tasks/md_20260520_145941_1.pdf', '-'], capture_output=True, text=True)
+print(result.stdout[:5000])
+print('STDERR:', result.stderr)
+"
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+
+STDERR:
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && file tasks/md_20260520_145941_1.pdf && wc -c tasks/md_20260520_145941_1.pdf
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+tasks/md_20260520_145941_1.pdf: PDF document, version 1.4, 13 pages
+3957896 tasks/md_20260520_145941_1.pdf
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && python3 -c "
+import subprocess
+# Try with encoding options
+result = subprocess.run(['pdftotext', '-enc', 'UTF-8', 'tasks/md_20260520_145941_1.pdf', '-'], capture_output=True)
+print('stdout length:', len(result.stdout))
+print('first 3000 bytes:', result.stdout[:3000])
+print('STDERR:', result.stderr[:500])
+"
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+stdout length: 13
+first 3000 bytes: b'\x0c\x0c\x0c\x0c\x0c\x0c\x0c\x0c\x0c\x0c\x0c\x0c\x0c'
+STDERR: b''
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && pdftoppm -jpeg -r 120 -f 1 -l 3 tasks/md_20260520_145941_1.pdf tasks/pdf_page 2>&1 && ls tasks/pdf_page*
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+tasks/pdf_page-01.jpg
+tasks/pdf_page-02.jpg
+tasks/pdf_page-03.jpg
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+SkillAction(skill='multimodal-llm', args='', thought='', action=<ActionType.SKILL: 'skill'>, security_risk=None)
+</action>
+<observation>
+SkillObservation(content='Base directory for this skill: /workspace/app-brjk6jdk4ykh/.skills/multimodal-llm\n\n## 能力概述\n\n调用百度千帆平台文心一言多模态大模型（ERNIE 4.5 Turbo VL），通过统一 Chat Completions 接口，支持将文本与图片混合传入，以 SSE 流式方式逐块返回模型生成内容。\n\n| 维度 | 说明 |\n|------|------|\n| Endpoint | `POST https://app-brjk6jdk4ykh-api-k93RZBjPykEa-gateway.appmiaoda.com/v2/chat/completions` |\n| 认证模式 | `platform_managed`（密钥由平台注入，无需用户配置） |\n| 流式协议 | SSE（Server-Sent Events），每块为 `data: {...}` 格式 |\n| 图片格式 | JPG / JPEG / PNG / BMP，单图不超过 10 MB |\n| 上下文限制 | 32k token（单次最大 27k token） |\n| 计费单价 | 原价 ¥0.60 / 千次，优惠价 ¥0.45 / 千次 |\n\nAuth Header 为 `X-Gateway-Authorization: Bearer ${INTEGRATIONS_API_KEY}`（注意不是标准的 `Authorization`）。\n\n\n**多平台实现差异：**\n\n| 平台 | 图片处理方式 | 流式接收方式 |\n|------|------------|------------|\n| Web | 原生 `fetch` + `eventsource-parser` 解析 SSE | `sendStreamRequest` 工具函数 |\n| MiniProgram | `imageToBase64` 转 Base64（H5/weapp 双环境兼容） | `sendChatStream`（`miaoda-taro-utils`） |\n| App | `expo-image-picker` 获取图片 → base64 传入 | `expo/fetch` + `eventsource-parser` 处理 SSE（必须使用 `expo/fetch`，RN 原生 fetch 不支持流式 `response.body`） |\n\n完整实现代码、参数表及各平台 Edge Function 详见 `references/chat-completions-api.md`。\n\n---\n\n## 生成期用法（Agent 直接调用）\n\n在生成期脚本中直接调用上游 API，适用于快速验证或服务端批处理场景。\n\n详细生成期代码（含完整参数、响应解析）见 `references/chat-completions-api.md` → **生成期代码** 小节。\n\n---\n\n## 生成后用法（应用内通过 Edge Function 调用）\n\n应用运行期通过 Supabase Edge Function 代理上游 SSE 流。Edge Function 负责注入 `INTEGRATIONS_API_KEY`，前端通过 SSE 工具库实时接收流式内容。\n\n- **Web 端**：`sendStreamRequest`（`ky` + `eventsource-parser`）\n- **MiniProgram 端**：`sendChatStream`（`miaoda-taro-utils`），图片必须先用 `imageToBase64` 转为 Base64\n\n详细 Edge Function 代码、前端调用代码及平台特有注意事项见 `references/chat-completions-api.md` → **Edge Function 代码** 和 **前端调用代码** 小节。', observation=<ObservationType.SKILL: 'skill'>, skill='multimodal-llm', success=True, data={'skill_path': '/workspace/miaoda_skills/prompts/managed/multimodal-llm/SKILL.md', 'scripts_path': None})
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh/.skills/multimodal-llm/references/chat-completions-api.md', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source='oh_aci', view_range=[1, 80], user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh/.skills/multimodal-llm/references/chat-completions-api.md is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-brjk6jdk4ykh/.skills/multimodal-llm/references/chat-completions-api.md:
+     1 # chat-completions-api — 文心一言多模态输入大模型接口
+     2 
+     3 ## API 基本信息
+     4 
+     5 | 字段 | 值 |
+     6 |------|----|
+     7 | Plugin ID | `822bc679-0277-46ac-b8aa-b91f49a3605b` |
+     8 | API ID | `api-k93RZBjPykEa` |
+     9 | Endpoint | `POST https://app-brjk6jdk4ykh-api-k93RZBjPykEa-gateway.appmiaoda.com/v2/chat/completions` |
+    10 | 认证模式 | `platform_managed` |
+    11 | Auth Header | `X-Gateway-Authorization: Bearer ${INTEGRATIONS_API_KEY}` |
+    12 | Content-Type | `application/json` |
+    13 | 响应类型 | SSE 流式（`text/event-stream`） |
+    14 | third_part_domain | `app-brjk6jdk4ykh-api-k93RZBjPykEa-gateway.appmiaoda.com` |
+    15 
+    16 ---
+    17 
+    18 ## 请求参数表
+    19 
+    20 | 参数名 | 类型 | 必填 | 说明 |
+    21 |--------|------|------|------|
+    22 | `messages` | `array` | 是 | 聊天历史信息列表，支持 system / user / assistant 角色 |
+    23 | `messages[].role` | `string` | 是 | 角色类型：`system` / `user` / `assistant` |
+    24 | `messages[].content` | `array` | 是 | 多模态内容数组 |
+    25 | `messages[].content[].type` | `string` | 是 | 内容类型：`text` / `image_url` |
+    26 | `messages[].content[].text` | `string` | 条件必填 | 文本信息（`type` 为 `text` 时必填） |
+    27 | `messages[].content[].image_url` | `object` | 条件必填 | 图像 URL 信息（`type` 为 `image_url` 时有效） |
+    28 | `messages[].content[].image_url.url` | `string` | 条件必填 | 图像 URL 或 Base64 编码；不超过 1024 字节；单图不超过 10 MB |
+    29 | `enable_thinking` | `boolean` | 否 | 是否开启思考模式，默认 `false` |
+    30 
+    31 > **messages 规则**：
+    32 > - 数组不能为空；1 个成员表示单轮对话，多个成员表示多轮对话
+    33 > - 输入总长度上限：上下文 32k token，单次最大 27k token
+    34 > - 图片格式：JPG / JPEG / PNG / BMP，单图不超过 10 MB
+    35 > - `image_url.url` 支持图片链接或 Base64 编码（格式：`data:image/<格式>;base64,<编码>`）
+    36 
+    37 ---
+    38 
+    39 ## 响应字段表
+    40 
+    41 ### 成功响应（流式 chunk）
+    42 
+    43 | 字段路径 | 类型 | 说明 |
+    44 |----------|------|------|
+    45 | `id` | `string` | 会话唯一标识，如 `as-9ki4hm6kkp` |
+    46 | `choices` | `array` | 生成结果数组 |
+    47 | `choices[].index` | `number` | 选项索引，通常为 `0` |
+    48 | `choices[].delta.role` | `string` | 角色，通常为 `assistant` |
+    49 | `choices[].delta.content` | `string` | 本块生成的文本内容 |
+    50 | `choices[].finish_reason` | `string` | 结束原因：`stop` / `length` / `content_filter` / `tool_calls` |
+    51 | `choices[].flag` | `number` | `0` 表示正常，非 `0` 表示触发安全检测 |
+    52 
+    53 ### 错误响应
+    54 
+    55 | 字段路径 | 类型 | 说明 |
+    56 |----------|------|------|
+    57 | `error.type` | `string` | 错误类型，如 `invalid_request_error` |
+    58 | `error.code` | `string` | 错误码，如 `invalid_model` |
+    59 | `error.message` | `string` | 错误描述信息 |
+    60 
+    61 ### 常见错误码
+    62 
+    63 | 错误码 | 说明 |
+    64 |--------|------|
+    65 | `invalid_model` | 模型不存在或无访问权限 |
+    66 | `characters_too_long` | 输入字符超过限制 |
+    67 | `tokens_too_long` | 输入 token 超过限制 |
+    68 | `image_url_unsafe` | 图像 URL 内容不安全 |
+    69 | `rpm_rate_limit_exceeded` | 达到每分钟请求数限制 |
+    70 | `tpm_rate_limit_exceeded` | 达到每分钟 token 数限制 |
+    71 
+    72 ---
+    73 
+    74 ## 生成期代码
+    75 
+    76 在 Deno 脚本中直接调用上游 SSE 接口（生成期验证/批处理场景）。
+    77 
+    78 ```typescript
+    79 const apiKey = process.env["INTEGRATIONS_API_KEY"]!; // platform_managed 密钥由平台注入
+    80 
+
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && python3 << 'EOF'
+import base64, json, urllib.request
+
+# Read image
+with open("tasks/pdf_page-01.jpg", "rb") as f:
+    img_b64 = base64.b64encode(f.read()).decode()
+
+payload = {
+    "messages": [{
+        "role": "user",
+        "content": [
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+            {"type": "text", "text": "请详细描述这张图片的全部文字内容，这是一个产品设计文档的PDF页面，请完整提取所有文字。"}
+        ]
+    }]
+}
+
+import os
+api_key = os.environ.get("INTEGRATIONS_API_KEY", "")
+req = urllib.request.Request(
+    "https://app-brjk6jdk4ykh-api-k93RZBjPykEa-gateway.appmiaoda.com/v2/chat/completions",
+    data=json.dumps(payload).encode(),
+    headers={"Content-Type": "application/json", "X-Gateway-Authorization": f"Bearer {api_key}"}
+)
+with urllib.request.urlopen(req, timeout=60) as resp:
+    content = resp.read().decode()
+    # parse SSE
+    full_text = ""
+    for line in content.split('\n'):
+        if line.startswith('data: ') and line != 'data: [DONE]':
+            try:
+                d = json.loads(line[6:])
+                delta = d.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                full_text += delta
+            except: pass
+    print(full_text[:3000])
+EOF
+
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+图片中的文字内容如下：
+
+Life map
+
+- 家庭沟通
+- 创业团队
+- 合租室友
+- 实习入职
+
+- 亲密关系
+- 科研竞赛
+- 社团竞选
+- 保研之争
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && python3 << 'EOF'
+import base64, json, urllib.request, os
+
+api_key = os.environ.get("INTEGRATIONS_API_KEY", "")
+
+def read_page(img_path, page_num):
+    with open(img_path, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode()
+    payload = {
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                {"type": "text", "text": "这是一个产品设计文档PDF的第{}页，请完整提取图片中所有可见的文字内容，保持原有层级结构。".format(page_num)}
+            ]
+        }]
+    }
+    req = urllib.request.Request(
+        "https://app-brjk6jdk4ykh-api-k93RZBjPykEa-gateway.appmiaoda.com/v2/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "X-Gateway-Authorization": f"Bearer {api_key}"}
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        content = resp.read().decode()
+        full_text = ""
+        for line in content.split('\n'):
+            if line.startswith('data: ') and line != 'data: [DONE]':
+                try:
+                    d = json.loads(line[6:])
+                    delta = d.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                    full_text += delta
+                except: pass
+        return full_text
+
+for i in range(2, 4):
+    path = f"tasks/pdf_page-0{i}.jpg"
+    print(f"\n=== 第{i}页 ===")
+    print(read_page(path, i))
+EOF
+
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+
+=== 第2页 ===
+**进入角色**
+- 人物介绍
+  - 私密目标：隐藏优势&焦虑（两张牌）
+  - 资源
+  - 动机 决策
+- 公开目标：
+  - all 顺利上岸&维持体面关系
+
+人物、局势概览
+（复杂关系图）
+
+→开始游戏
+
+在游戏开始之前，许个愿吧
+make a wish～就像，你刚来到大学，未谙世事，拥有所有期待与想象那样
+
+input( )
+我想成为一个很厉害的人
+保研成功，赚很多钱
+travel the world
+然后和我最好的朋友环游世界
+
+→结尾藏刀
+资源有限，无论如何皆有得失
+一个对比：回过头再看看当初的模样 嘘嘘～
+
+=== 第3页 ===
+交互组件/元素
+
+站队/盟友情况
+
+A ○—我
+
+C ○
+
+  ↓
+
+B ①解锁私聊
+
+  ↓
+
+D进入小房间聊天窗
+
+用途
+
+②联盟
+
+我—B
+
+A ○
+
+C 邀请
+
+点击确认
+
+D (咱就是说，要有仪式感)
+
+信息卡
+
+の 交换
+
+② 隐瞒
+
+③ 公开
+
+④ 伪装成不重要
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && pdftoppm -jpeg -r 120 -f 4 -l 13 tasks/md_20260520_145941_1.pdf tasks/pdf_page 2>&1 && ls tasks/pdf_page*
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+tasks/pdf_page-01.jpg
+tasks/pdf_page-02.jpg
+tasks/pdf_page-03.jpg
+tasks/pdf_page-04.jpg
+tasks/pdf_page-05.jpg
+tasks/pdf_page-06.jpg
+tasks/pdf_page-07.jpg
+tasks/pdf_page-08.jpg
+tasks/pdf_page-09.jpg
+tasks/pdf_page-10.jpg
+tasks/pdf_page-11.jpg
+tasks/pdf_page-12.jpg
+tasks/pdf_page-13.jpg
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && python3 << 'EOF'
+import base64, json, urllib.request, os
+
+api_key = os.environ.get("INTEGRATIONS_API_KEY", "")
+
+def read_page(img_path, page_num):
+    with open(img_path, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode()
+    payload = {
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
+                {"type": "text", "text": "这是一个产品设计文档PDF的第{}页，请完整提取图片中所有可见的文字内容，保持原有层级结构。".format(page_num)}
+            ]
+        }]
+    }
+    req = urllib.request.Request(
+        "https://app-brjk6jdk4ykh-api-k93RZBjPykEa-gateway.appmiaoda.com/v2/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "X-Gateway-Authorization": f"Bearer {api_key}"}
+    )
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        content = resp.read().decode()
+        full_text = ""
+        for line in content.split('\n'):
+            if line.startswith('data: ') and line != 'data: [DONE]':
+                try:
+                    d = json.loads(line[6:])
+                    delta = d.get('choices', [{}])[0].get('delta', {}).get('content', '')
+                    full_text += delta
+                except: pass
+        return full_text
+
+for i in range(4, 14):
+    path = f"tasks/pdf_page-{i:02d}.jpg"
+    print(f"\n=== 第{i}页 ===")
+    try:
+        print(read_page(path, i))
+    except Exception as e:
+        print(f"Error: {e}")
+EOF
+
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+
+=== 第4页 ===
+本系统大人会给大家发好多类型の卡牌~
+
+关享卡 → 复制粘贴の1ogic，别人能看到相同の信息卡
+
+试探卡 — A
+     — B
+     — C eg. ask → 线索卡 警惕，信任山
+     — D
+
+结盟 → 接受邀请
+
+保留卡
+
+谣言卡 → 听说今年考试重点是
+
+抢占 托举（好人卡）
+
+公开澄清
+
+①提示卡（分析局势）
+if—
+if—
+
+请输入...
+
+=== 第5页 ===
+清现状选择对象
+A —
+β —
+C —
+D —
+E 全体群聊
+
+表达方式
+直接：____
+委婉：
+模糊：
+强势
+沉默
+
+=== 第6页 ===
+我觉得，可以把囚徒困境式的博弈，摆在台面上 更加沉浸式体验
+
+画风变暗
+
+这一天，
+你做了一个梦...
+
+an have 一份资料
+每个人都在他的立方体之中
+
+（prison）
+
+=== 第7页 ===
+摊牌复盘
+
+圆桌讨论会
+
+摊牌
+自保卡
+合作卡
+
+=== 第8页 ===
+PVP
+
+公开事件/线索
+
+不密信息获取能力 A
+私聊 B
+人脉 C
+天赋 D
+
+系统公布（部分结果）
+
+MPC反应
+
+下一局
+
+=== 第9页 ===
+result page
+① 结算庭审
+类似法庭
+深棕色
+
+player A
+P B
+
+P C
+P D
+
+=== 第10页 ===
+复盘审判
+- gain
+- loss
+
+evidence
+- 线索卡
+  - 你在Round 2没有...导致错过...
+  - R 3延迟...导致失去...信任
+
+他人评价
+
+A
+
+Cost- list
+
+=== 第11页 ===
+摊牌
+你的资源卡
+
+热点
+1 ○ ○ ○
+2
+3 ○
+4  ○
+5
+6 ○
+
+✓time
+
+=== 第12页 ===
+这张图片中的文字内容提取如下：
+
+**命运档案**
+
+姓名：XXX
+
+在此刻，回望一下
+留下你的骄傲与遗憾
+
+便利贴
+
+=== 第13页 ===
+好(我最喜欢的页面)
+每个玩家的留言，将被下一个玩家
+下一代学生
+下一个自己
+所看到
+
+每一份留言都是真实 player
+留下心
+教训与感悟
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+AgentThinkAction(thought='Now I have a comprehensive understanding of the product design from both documents. Let me synthesize the key information:\n\n**Product Overview**: "人生地图" (Life Map) - A role-playing life decision simulation app for Chinese youth. Users pick a "life map" (保研考研, 实习, 入职, etc.) and experience high-pressure decision-making scenarios.\n\n**First Map: 保研考研 (Graduate School Competition)**\n\n**Core Game Flow**:\n1. 首页 - Full map overview, game introduction\n2. 进入角色 - Character intro, goals, resources, situation overview\n3. 许愿 - Make a wish before game starts (shown at end for comparison)\n4. 游戏正式开始 - 4-6 rounds of structured play\n5. 摊牌复盘 - Final reveal/debrief\n6. 结局页 - Results page with multiple sections\n\n**Game Mechanics (4-6 rounds)**:\n- Public event appears\n- Each player receives private info\n- Players choose actions\n- System reveals partial results\n- NPC/other player reactions\n- Next round\n\n**Card Types**:\n- 信息卡 (Info cards): exchange, hide, reveal, disguise\n- 行动卡 (Action cards): 共享/试探/结盟/保留/抢占/澄清/托举/谣言卡\n- 提示卡 (Hint cards): analyze situation\n- 资源卡 (Resource cards)\n\n**Characters (for 保研之争)**:\n- 林亦然\n- 许知夏  \n- 沈砚\n- Plus the player\n\n**Resources**:\n- 信息卡\n- 信任标记\n- 机会点 (导师沟通/推荐信/夏令营)\n- 压力值\n- 声誉值\n\n**Result Page Sections**:\n1. 结算庭审 (Settlement Trial) - dark brown courtroom aesthetic\n2. 自由交流环节 (Free discussion)\n3. 代价清单 (Cost list)\n4. 命运档案 (Fate Archive) - personality label\n5. 心愿便利贴 (Wish sticky notes) - community wall with other players\' notes\n\n**Visual Style**:\n- AESTHETIC_TEMPLATE: 手写笔记本 - handwritten fonts, monochrome texture, grayscale palette, notebook feel\n- Game darkens visually during prisoner\'s dilemma moments\n- Deep brown for courtroom/settlement scene\n\n**Tech**: React Native + Expo SDK 55, single-player simulation (NPC opponents for now)\n\nNow I need to call PRDAgent with all this information to generate the PRD, then call aesthetic_template, then implement the app.\n', action=<ActionType.THINK: 'think'>)
+</action>
+<observation>
+AgentThinkObservation(content='Your thought has been logged.', observation=<ObservationType.THINK: 'think'>)
+</observation>
+<action>
+TodoAction(todos=[TodoItem(id='1', status='in_progress', priority='high', content='调用PRDAgent生成产品需求文档', details='', group=None, agent_name=None), TodoItem(id='2', status='pending', priority='high', content='获取美学模板配置', details='', group=None, agent_name=None), TodoItem(id='3', status='pending', priority='high', content='初始化Supabase数据库', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='high', content='实现首页与地图选择页', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='实现角色介绍与许愿页', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='high', content='实现游戏主流程（6轮博弈）', details='', group=None, agent_name=None), TodoItem(id='7', status='pending', priority='high', content='实现行动卡/信息卡/资源系统', details='', group=None, agent_name=None), TodoItem(id='8', status='pending', priority='high', content='实现结局页（庭审/代价清单/命运档案）', details='', group=None, agent_name=None), TodoItem(id='9', status='pending', priority='medium', content='实现便利贴留言墙', details='', group=None, agent_name=None), TodoItem(id='10', status='pending', priority='medium', content='搜索配图、生成图标、代码检查', details='', group=None, agent_name=None)], command='create', thought='好的，我已经完整读取了两份文档的全部内容。这是一个非常有创意的产品！现在让我整理需求并生成PRD。', action=<ActionType.TODO: 'todo'>, content='')
+</action>
+<observation>
+TodoObservation(content='<system-reminder>\nYour todo list has changed. Here are the latest contents of your todo list:\n\n1. 调用PRDAgent生成产品需求文档 *high* [in_progress]\n\n2. 获取美学模板配置 *high* [pending]\n\n3. 初始化Supabase数据库 *high* [pending]\n\n4. 实现首页与地图选择页 *high* [pending]\n\n5. 实现角色介绍与许愿页 *high* [pending]\n\n6. 实现游戏主流程（6轮博弈） *high* [pending]\n\n7. 实现行动卡/信息卡/资源系统 *high* [pending]\n\n8. 实现结局页（庭审/代价清单/命运档案） *high* [pending]\n\n9. 实现便利贴留言墙 *medium* [pending]\n\n10. 搜索配图、生成图标、代码检查 *medium* [pending]\n</system-reminder>', state=TodoState(items=[TodoItem(id='1', status='in_progress', priority='high', content='调用PRDAgent生成产品需求文档', details='', group=None, agent_name=None), TodoItem(id='2', status='pending', priority='high', content='获取美学模板配置', details='', group=None, agent_name=None), TodoItem(id='3', status='pending', priority='high', content='初始化Supabase数据库', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='high', content='实现首页与地图选择页', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='实现角色介绍与许愿页', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='high', content='实现游戏主流程（6轮博弈）', details='', group=None, agent_name=None), TodoItem(id='7', status='pending', priority='high', content='实现行动卡/信息卡/资源系统', details='', group=None, agent_name=None), TodoItem(id='8', status='pending', priority='high', content='实现结局页（庭审/代价清单/命运档案）', details='', group=None, agent_name=None), TodoItem(id='9', status='pending', priority='medium', content='实现便利贴留言墙', details='', group=None, agent_name=None), TodoItem(id='10', status='pending', priority='medium', content='搜索配图、生成图标、代码检查', details='', group=None, agent_name=None)], updated_at='2026-05-20T07:04:56.815737+00:00'), system_reminder='', observation=<ObservationType.TODO: 'todo'>)
+</observation>
+<action>
+**MessageAction** (source=EventSource.AGENT)
+CONTENT: 
+</action>
+<action>
+**RecallAction**
+QUERY: 生成应用
+</action>
+<action>
+**MessageAction** (source=EventSource.AGENT)
+CONTENT: 好的！我将根据你的需求创建一个应用，应用内将包含多个功能和相应页面。接下来，我会先根据需求文档搭建应用框架并梳理一下整体的实现方案，随后分步骤进行对应的任务执行。
+</action>
+<action>
+**MCPAction**
+NAME: generate_start
+ARGUMENTS: {'appId': 'app-brjk6jdk4ykh', 'userId': 'user-bml7tpy8gbuo', 'requirementType': 'Mobile App', 'hasAgent': False, 'hasCodeTemplate': 'NONE', 'codeTemplateZipUrl': '', 'isBoilerplate': False, 'isFirstGeneration': True, 'use_supabase': False}
+</action>
+<observation>
+**MCPObservation**
+NAME: generate_start
+RESULTS: {"code":0,"message":"success"}
+</observation>
+<action>
+TodoAction(todos=[TodoItem(id='1', status='completed', priority='high', content='调用PRDAgent生成产品需求文档', details='', group=None, agent_name=None), TodoItem(id='2', status='in_progress', priority='high', content='获取美学模板配置', details='', group=None, agent_name=None), TodoItem(id='3', status='pending', priority='high', content='初始化Supabase数据库', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='high', content='实现首页与地图选择页', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='实现角色介绍与许愿页', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='high', content='实现游戏主流程（6轮博弈）', details='', group=None, agent_name=None), TodoItem(id='7', status='pending', priority='high', content='实现行动卡/信息卡/资源系统', details='', group=None, agent_name=None), TodoItem(id='8', status='pending', priority='high', content='实现结局页（庭审/代价清单/命运档案）', details='', group=None, agent_name=None), TodoItem(id='9', status='pending', priority='medium', content='实现便利贴留言墙', details='', group=None, agent_name=None), TodoItem(id='10', status='pending', priority='medium', content='搜索配图、生成图标、代码检查', details='', group=None, agent_name=None)], command='update', thought='', action=<ActionType.TODO: 'todo'>, content='')
+</action>
+<observation>
+TodoObservation(content='<system-reminder>\nYour todo list has changed. Here are the latest contents of your todo list:\n\n1. 调用PRDAgent生成产品需求文档 *high* [completed]\n\n2. 获取美学模板配置 *high* [in_progress]\n\n3. 初始化Supabase数据库 *high* [pending]\n\n4. 实现首页与地图选择页 *high* [pending]\n\n5. 实现角色介绍与许愿页 *high* [pending]\n\n6. 实现游戏主流程（6轮博弈） *high* [pending]\n\n7. 实现行动卡/信息卡/资源系统 *high* [pending]\n\n8. 实现结局页（庭审/代价清单/命运档案） *high* [pending]\n\n9. 实现便利贴留言墙 *medium* [pending]\n\n10. 搜索配图、生成图标、代码检查 *medium* [pending]\n</system-reminder>', state=TodoState(items=[TodoItem(id='1', status='completed', priority='high', content='调用PRDAgent生成产品需求文档', details='', group=None, agent_name=None), TodoItem(id='2', status='in_progress', priority='high', content='获取美学模板配置', details='', group=None, agent_name=None), TodoItem(id='3', status='pending', priority='high', content='初始化Supabase数据库', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='high', content='实现首页与地图选择页', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='实现角色介绍与许愿页', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='high', content='实现游戏主流程（6轮博弈）', details='', group=None, agent_name=None), TodoItem(id='7', status='pending', priority='high', content='实现行动卡/信息卡/资源系统', details='', group=None, agent_name=None), TodoItem(id='8', status='pending', priority='high', content='实现结局页（庭审/代价清单/命运档案）', details='', group=None, agent_name=None), TodoItem(id='9', status='pending', priority='medium', content='实现便利贴留言墙', details='', group=None, agent_name=None), TodoItem(id='10', status='pending', priority='medium', content='搜索配图、生成图标、代码检查', details='', group=None, agent_name=None)], updated_at='2026-05-20T07:27:39.638350+00:00'), system_reminder='', observation=<ObservationType.TODO: 'todo'>)
+</observation>
+<action>
+**MCPAction**
+NAME: aesthetic_template
+ARGUMENTS: {'input': '手写笔记本：手写字体，单色纹理，采用灰度调色板，强调排版层次结构，模拟笔记本的感觉。', 'appId': 'app-brjk6jdk4ykh', 'userId': 'user-bml7tpy8gbuo', 'appType': 'Mobile App', 'prd': '# 需求文档\n\n## 1. 应用概述\n\n### 1.1 应用名称\n人生地图 Life Map\n\n### 1.2 应用描述\n面向中国青年的角色扮演式生涯博弈移动端应用。用户选择与自身成长处境相关的「人生地图」，在多轮高压选择和多方博弈中体验不同决策带来的结果。系统根据用户选择路径生成关系结算、人格标签、隐藏代价与平行人生结局，帮助青年在低风险互动体验中理解成长选择的复杂性。这是社会场景预演工具，非娱乐游戏或心理测评。\n\n### 1.3 视觉风格\n手写笔记本风格：手写字体、单色纹理、灰度调色板、强调排版层次结构、模拟笔记本质感。囚徒困境博弈时画风变暗，结算庭审场景使用深棕色。\n\n## 2. 用户与使用场景\n\n### 2.1 目标用户\n中国青年群体，面临保研考研、实习争夺、入职适应、亲密关系、返乡创业等成长选择场景。\n\n### 2.2 核心使用场景\n用户在面临重要人生选择前或选择后，通过角色扮演式博弈体验不同决策路径的结果，理解成长选择的复杂性与代价，进行自我反思与成长。\n\n## 3. 页面结构与功能说明\n\n### 3.1 页面结构\n\n```\n├── 首页/地图大厅\n├── 角色进入/局势概览页\n├── 许愿页\n├── 游戏主流程页\n│   ├── 第1轮：资料共享危机\n│   ├── 第2轮：导师信息互通\n│   ├── 第3轮：囚徒困境\n│   ├── 第4轮：盟友失误救援\n│   ├── 第5轮：最后入口争夺\n│   └── 第6轮：摊牌\n└── 结局页\n    ├── 结算庭审\n    ├── 代价清单\n    ├── 命运档案\n    └── 心愿便利贴/留言墙\n```\n\n### 3.2 首页/地图大厅\n\n#### 3.2.1 功能说明\n  - 展示Life Map全景地图\n  - 列出可选地图：保研之争、实习争夺、入职适应、亲密关系、家庭沟通、创业团队、合租室友、科研竞赛、社团竞选\n  - 仅「保研之争」可进入，其他地图标注「即将开放」\n  - 展示简要游戏说明\n  - 点击「保研之争」进入角色进入页\n\n### 3.3 角色进入/局势概览页\n\n#### 3.3.1 功能说明\n  - 展示人物关系图（复杂关系网络可视化）\n  - 展示核心人物信息：\n    - 玩家（自己）\n    - 林亦然：同一导师组竞争者，表面友善，实则竞争激烈\n    - 许知夏：信息灵通的学姐，掌握核心资源\n    - 沈砚：低调但实力强的暗马，行动难以预测\n    - 导师：关键裁判，决定最终机会点分配\n  - 展示每个NPC的公开信息和隐藏特质提示\n  - 展示玩家初始资源：\n    - 信息卡×3\n    - 信任标记×2\n    - 机会点×1\n    - 压力值：30\n    - 声誉值：60\n  - 展示公开目标：顺利保研上岸、维持体面关系\n  - 展示私密目标（随机抽取2张）：例如「在不暴露自己信息优势的前提下完成保研」或「与沈砚建立真实友谊」\n  - 点击「开始游戏」按钮进入许愿页\n\n### 3.4 许愿页\n\n#### 3.4.1 功能说明\n  - 展示文案：「在游戏开始之前，许个愿吧～就像你刚来到大学，未谙世事，拥有所有期待与想象那样……」\n  - 提供输入框，玩家输入愿望\n  - 点击「踏入这场局」按钮进入游戏主流程\n\n### 3.5 游戏主流程页\n\n#### 3.5.1 整体流程\n游戏共6轮博弈，每轮结构：\n  1. 展示公开事件（全体可见）\n  2. 展示玩家收到的私密信息/线索卡\n  3. 玩家选择行动卡 + 选择对象 + 选择表达方式\n  4. 系统公布部分结果\n  5. 展示NPC反应（对话气泡/状态变化）\n  6. 更新资源数值\n\n#### 3.5.2 第1轮：资料共享危机\n  - 公开事件：「导师组即将公布夏令营名额，名额只有2个，共4人竞争。」\n  - 私密信息：玩家收到一份关键复试资料\n  - 行动选择：\n    - 选择对象：林亦然/许知夏/沈砚/全体群聊/导师窗口\n    - 选择行动：共享/试探/结盟/保留/谣言\n    - 选择表达方式：直接/委婉/模糊/强势/沉默\n  - 系统公布部分结果\n  - 展示NPC反应\n  - 更新资源数值\n\n#### 3.5.3 第2轮：导师信息互通\n  - 公开事件：「导师约谈时间表公布，某人被优先约谈。」\n  - 沈砚发出暗示（玩家可追问或忽略）\n  - 行动选择：是否追问沈砚\n  - 系统公布部分结果\n  - 展示NPC反应\n  - 更新资源数值\n\n#### 3.5.4 第3轮：囚徒困境\n  - 画风变暗\n  - 插入梦境叙事：「这一天晚上，你做了一个梦……每个人都被关在一个立方体里……」\n  - 公开事件：所有人手里有部分资料，共享则共赢，隐瞒则自利但群体受损\n  - 核心资料共享博弈：\n    - 选择行动：共享/延迟共享/部分共享/私下给盟友\n  - 系统根据前面的信任记录影响后续反应\n  - 系统公布部分结果\n  - 展示NPC反应\n  - 更新资源数值\n\n#### 3.5.5 第4轮：盟友失误救援\n  - 公开事件：「林亦然材料出现漏洞，你是否帮忙补救？」\n  - 行动选择：托举/抢占\n  - 结盟机制：可邀请某人进入私聊小房间\n  - 系统公布部分结果\n  - 展示NPC反应\n  - 更新资源数值\n\n#### 3.5.6 第5轮：最后入口争夺\n  - 公开事件：「推荐信名额突然减少为1个。」\n  - 行动选择：抢占/澄清/合作\n  - 系统根据声誉值影响NPC反应\n  - 系统公布部分结果\n  - 展示NPC反应\n  - 更新资源数值\n\n#### 3.5.7 第6轮：摊牌\n  - 圆桌复盘会\n  - 所有隐藏信息公开\n  - 每人亮出自己的资源卡\n  - 系统判定最终结局\n  - 进入结局页\n\n#### 3.5.8 行动卡系统\n每轮可选行动：\n  - 共享：公开信息，增加群体信任，减少个人信息差\n  - 试探：询问某人关键信息，可能得线索也可能引发警惕\n  - 结盟：与某人达成私下互助，获短期保护，被他人怀疑\n  - 保留：暂不共享，保住优势，信任下降\n  - 抢占：优先申请机会，资源上升，声誉可能受损\n  - 澄清：公开解释行为，降低误会，但暴露部分策略\n  - 托举：帮助他人，自己短期吃亏，长期信任上升\n  - 谣言：散布模糊信息，制造混乱\n\n行动对象：林亦然/许知夏/沈砚/全体群聊/导师窗口\n\n表达方式：直接/委婉/模糊/强势/沉默\n\n#### 3.5.9 资源系统\n  - 信息卡：可交换/隐瞒/公开/伪装成不重要\n  - 信任标记：可解锁私聊和联盟\n  - 机会点：导师沟通/推荐信/夏令营入口，决定最终结果\n  - 压力值（0-100）：高压力无法选择「长期主义」行动\n  - 声誉值（0-100）：影响结局复盘与他人评价\n\n### 3.6 结局页\n\n#### 3.6.1 结算庭审\n  - 深棕色法庭风格界面\n  - 展示所有玩家（含NPC）正面面对\n  - 系统（法官）宣读判决书：获得了什么/失去了什么\n  - 展示关键证据线索卡，例如：\n    - 「你在第2轮没有追问沈砚的暗示，导致错过了提前沟通窗口。」\n    - 「你在第3轮延迟共享资料，林亦然从那一刻开始不再主动给你信息。」\n    - 「你在第5轮选择公开澄清，虽然失去了一部分效率，但保住了群体信任。」\n  - 点击「下一步」进入代价清单\n\n#### 3.6.2 代价清单（Cost List）\n  - 列出每个关键决策的得与失\n  - 时间轴格式：轮次 → 行动 → 代价/收益\n  - 点击「下一步」进入命运档案\n\n#### 3.6.3 命运档案\n  - 根据决策路径生成人格标签（2-3个）\n  - 例如：「信息控制者」「表面合作者」「真实同行者」「孤狼策略家」等\n  - 展示简短模糊的人格解读\n  - 点击「下一步」进入心愿便利贴/留言墙\n\n#### 3.6.4 心愿便利贴/留言墙\n  - 展示玩家开始时写的愿望\n  - 系统反问：\n    - 「你是否曾经动摇过——」\n    - 「我当时为什么那么选？」\n    - 「如果我全程合作，会不会被利用？」\n    - 「如果我全程自保，会不会赢但失去信任？」\n  - 大树意象：树叶由便利贴组成，每片叶子是一个玩家的留言\n  - 展示其他用户的真实留言（匿名）\n  - 玩家输入自己的感悟，提交后挂到树上\n  - 点击随机叶子可查看他人留言\n  - 结尾文案：「不管怎么样，不管得失如何，你都在二十岁，又成长了一点。」\n  - 点击「返回首页」回到地图大厅\n\n## 4. 业务规则与逻辑\n\n### 4.1 私密目标随机抽取规则\n  - 进入角色进入页时，系统从预设私密目标池中随机抽取2张\n  - 私密目标示例：「在不暴露自己信息优势的前提下完成保研」「与沈砚建立真实友谊」\n\n### 4.2 行动选择影响规则\n  - 每轮玩家选择行动卡、对象、表达方式后，系统根据选择更新资源数值\n  - 不同行动对资源的影响：\n    - 共享：信任标记+1，信息卡-1\n    - 试探：可能获得线索卡，声誉值-5\n    - 结盟：信任标记+2，声誉值-10\n    - 保留：信任标记-1\n    - 抢占：机会点+1，声誉值-15\n    - 澄清：声誉值+10，信息卡-1\n    - 托举：信任标记+2，机会点-1\n    - 谣言：压力值+10，声誉值-20\n\n### 4.3 NPC反应规则\n  - 系统根据玩家行动和当前资源数值生成NPC反应\n  - 前面轮次的信任记录影响后续轮次NPC的反应\n  - 声誉值影响第5轮NPC反应\n\n### 4.4 压力值影响规则\n  - 压力值高于70时，无法选择「长期主义」行动（如托举、澄清）\n\n### 4.5 结局判定规则\n  - 第6轮摊牌后，系统根据玩家最终资源数值（机会点、信任标记、声誉值）判定结局\n  - 结局类型包括但不限于：成功保研且维持关系、成功保研但失去信任、保研失败但保住声誉、保研失败且关系破裂\n\n### 4.6 人格标签生成规则\n  - 系统根据玩家6轮决策路径生成2-3个人格标签\n  - 标签示例：「信息控制者」「表面合作者」「真实同行者」「孤狼策略家」「利他主义者」「机会主义者」\n\n### 4.7 便利贴留言存储规则\n  - 玩家提交留言后，系统将留言内容匿名存储到后端数据库\n  - 留言墙展示所有用户的匿名留言\n  - 点击随机叶子时，系统从数据库中随机抽取一条留言展示\n\n## 5. 异常与边界情况\n\n| 场景 | 处理方式 |\n|------|----------|\n| 玩家在许愿页未输入愿望直接点击「踏入这场局」 | 提示「请输入你的愿望」，不允许进入游戏 |\n| 玩家在游戏主流程中未选择行动卡直接点击「下一步」 | 提示「请选择行动」，不允许进入下一轮 |\n| 玩家在心愿便利贴页未输入感悟直接点击「提交」 | 提示「请输入你的感悟」，不允许提交 |\n| 玩家在游戏过程中退出应用 | 不保存游戏进度，下次进入从首页开始 |\n| 便利贴留言内容为空 | 提示「请输入内容」，不允许提交 |\n| 便利贴留言内容超过200字 | 提示「留言不得超过200字」，不允许提交 |\n| 后端数据库连接失败 | 提示「网络异常，请稍后再试」，玩家可继续游戏但无法查看他人留言 |\n\n## 6. 验收标准\n\n1. 用户打开应用，进入首页/地图大厅，点击「保研之争」地图\n2. 用户查看角色进入/局势概览页，了解人物关系、初始资源、目标，点击「开始游戏」\n3. 用户在许愿页输入愿望，点击「踏入这场局」\n4. 用户完成6轮博弈，每轮选择行动卡、对象、表达方式，查看NPC反应和资源数值更新\n5. 用户进入结局页，依次查看结算庭审、代价清单、命运档案\n6. 用户在心愿便利贴/留言墙输入感悟并提交，查看他人留言，点击「返回首页」\n\n## 7. 本期不实现功能\n\n  - 用户登录与注册\n  - 除「保研之争」外的其他地图（实习争夺、入职适应、亲密关系、家庭沟通、创业团队、合租室友、科研竞赛、社团竞选）\n  - 游戏进度保存与恢复\n  - 多人联机博弈\n  - 游戏回放功能\n  - 便利贴留言点赞或回复\n  - 用户个人中心或历史记录\n  - 游戏数据统计与分析\n  - 社交分享功能'}
+</action>
+<observation>
+**MCPObservation**
+NAME: aesthetic_template
+RESULTS: - Title: 手写笔记本
+- Description: 手写字体，单色纹理，采用灰度调色板，强调排版层次结构，模拟笔记本的感觉。
+- Context: # Theme Name: 手写笔记本
+# Vibe & Description: 手写字体，单色纹理，采用灰度调色板，强调排版层次结构，模拟笔记本的感觉。
+
+# Color
+- 严格限制色彩，仅使用纯黑、深灰、浅灰和纸张白。
+- 模拟“铅笔在白纸上”的效果。背景使用极淡的纹理白（#FDFBF7 或 纯白带噪点），文字使用石墨灰（#333333），强调色使用深炭黑（#000000）。这种配色传达出专注、纯粹、理性的情感。
+
+# Font
+- 使用「YangRenDongZhuShiTi-Semibold」作为标题字体。
+- 使用「YangRenDongZhuShiTi-Regular」作为正文字体。
+
+## 字体引入方式
+在 `app/_layout.tsx` 中加载字体
+```js
+import { useFonts } from 'expo-font';
+
+const [fontsLoaded] = useFonts({
+  'YangRenDongZhuShiTi-Semibold': { uri: 'https://resource-static.bj.bcebos.com/fonts/YangRenDongZhuShiTi-Semibold.ttf' },
+  'YangRenDongZhuShiTi-Regular': { uri: 'https://resource-static.bj.bcebos.com/fonts/YangRenDongZhuShiTi-Regular.ttf' },
+});
+```
+`tailwind.config.js` 添加 fontFamily 属性扩展字体
+```js
+{
+  fontFamily: {
+    'yang-ren-dong-zhu-shi-ti-semibold': ['YangRenDongZhuShiTi-Semibold', 'sans-serif'],
+    'yang-ren-dong-zhu-shi-ti-regular': ['YangRenDongZhuShiTi-Regular', 'sans-serif'],
+  }
+}
+```
+## 字体使用示例
+```jsx
+<Text className="font-yang-ren-dong-zhu-shi-ti-semibold text-lg"></Text>
+<Text className="font-yang-ren-dong-zhu-shi-ti-regular text-lg"></Text>
+```
+# Animation
+-  触摸或长按时，元素会有微小的“浮动”或线条重绘效果，仿佛笔触在加深。点击时有“按压”纸张的反馈。
+-  元素出现时采用“书写”动画（Stroke animation）或“淡入+轻微位移”，模拟文字被写在纸上的过程。
+
+# Layout
+- 元素像是在纸上随意拼贴或书写，稍微的错位和旋转（1-2度）增加真实感。使用左侧“装订线”或顶部“螺旋线圈”作为视觉锚点，但保持页面主体的自由度。
+- 页面布局宽松，模拟随意但有条理的笔记习惯。
+
+# Elements
+- 按钮和卡片使用 SVG / Skia 滤镜或图片切片模拟手绘线条。
+- 涂改痕迹: 强调文字或链接时，使用类似荧光笔（灰色）或下划线的涂鸦效果。
+- 纸张纹理: 背景叠加一层淡淡的纸张纹理噪点（使用生图或搜图工具）。
+- 所有的边框、分割线都模拟手绘的自然抖动感（Rough.js 风格）。
+
+
+- Title: 暗黑极简
+- Description: 在深色基底下刻意降低信息密度，以留白和节奏感拉开内容关系，主要依靠字号、字重与间距而非装饰建立层级，整体极度克制、几乎无阴影与描边，使界面在暗色环境中依然冷静、耐看。
+- Context: # Theme Name: 暗黑极简
+# Vibe & Description: 在深色基底下刻意降低信息密度，以留白和节奏感拉开内容关系，主要依靠字号、字重与间距而非装饰建立层级，整体极度克制、几乎无阴影与描边，使界面在暗色环境中依然冷静、耐看。
+
+# Color
+- 主背景：#0B0F19；
+- 次背景 / 卡片：#0F172A
+- 主文字：#E5E7EB
+- 次文字：#9CA3AF
+- 边界：#1F2937（1px）
+- 唯一信号色（可根据用户需求进行选择）：使用场景：选中态，主按钮，当前状态指示。→ 在深色中仍清晰但不刺眼
+
+# Font
+- 推荐选用「未来荧黑」作为全局字体
+
+## 字体引入方式
+在 `app/_layout.tsx` 中加载字体
+```js
+import { useFonts } from 'expo-font';
+
+const [fontsLoaded] = useFonts({
+  'Glow Sans SC': { uri: 'https://resource-static.cdn.bcebos.com/fonts/GlowSansSC-Normal-Regular.ttf' },
+});
+```
+`tailwind.config.js` 添加 fontFamily 属性扩展字体
+```js
+{
+  fontFamily: {
+    'glow-sans-sc': ['Glow Sans SC', 'serif'],
+  }
+}
+```
+## 字体使用示例
+```jsx
+<Text className="font-glow-sans-sc text-lg"></Text>
+```
+# Animation
+## 元素动画
+- 动画极简且线性。元素沿着网格线滑入到位；
+## 入场动画
+- 没有弹跳或弹性效果，页面滚动像文档一样自然，有缓动效果（ease-out）；
+## 过渡动画
+- 内容加载时采用淡入或轻微位移；
+
+# Layout
+- 内容被组织在清晰的模块中。大量留白用于区分不同区块，
+- 偏好左对齐文本和结构化的图像排布，不做装饰性错位。
+
+# Elements
+- 偏好使用极简线性图表，统一笔画粗细，无填充
+- 阴影 ≈ 0，边框 ≤ 1px，弱化按钮感，主按钮 ≠ 大色块，更多强调文字
+
+- Title: 白色极简
+- Description: 以空气感为先，通过大量留白和清晰的字号、字重与间距构建信息层级，整体保持绝对克制，几乎不使用阴影与装饰色，并以温和对比和不锐利的细线字体确保长时间阅读的舒适性。
+- Context: # Theme Name: 白色极简
+# Vibe & Description: 以空气感为先，通过大量留白和清晰的字号、字重与间距构建信息层级，整体保持绝对克制，几乎不使用阴影与装饰色，并以温和对比和不锐利的细线字体确保长时间阅读的舒适性。
+
+# Color
+- 主背景：#FFFFFF；
+- 次背景：#F8F9FB→ 仅用极细微色差区分层级
+- 主文字：#111827（深灰而非纯黑）
+- 次文字：#6B7280
+- 边界：#E5E7EB（1px）
+- 唯一信号色（可根据用户需求进行选择）：使用场景：选中态，主按钮，当前状态指示
+
+# Font
+- 推荐选用「未来荧黑」作为全局字体
+
+## 字体引入方式
+在 `app/_layout.tsx` 中加载字体
+```js
+import { useFonts } from 'expo-font';
+
+const [fontsLoaded] = useFonts({
+  'Glow Sans SC': { uri: 'https://resource-static.cdn.bcebos.com/fonts/GlowSansSC-Normal-Regular.ttf' },
+});
+```
+`tailwind.config.js` 添加 fontFamily 属性扩展字体
+```js
+{
+  fontFamily: {
+    'glow-sans-sc': ['Glow Sans SC', 'serif'],
+  }
+}
+```
+## 字体使用示例
+```jsx
+<Text className="font-glow-sans-sc text-lg"></Text>
+```
+# Animation
+## 元素动画
+- 动画极简且线性。元素沿着网格线滑入到位；
+## 入场动画
+- 没有弹跳或弹性效果，页面滚动像文档一样自然，有缓动效果（ease-out）；
+## 过渡动画
+- 内容加载时采用淡入或轻微位移；
+
+# Layout
+- 内容被组织在清晰的模块中。大量留白用于区分不同区块，
+- 偏好左对齐文本和结构化的图像排布，不做装饰性错位。
+
+# Elements
+- 偏好使用极简线性图表，统一笔画粗细，无填充
+- 阴影 ≈ 0，边框 ≤ 1px，弱化按钮感，主按钮 ≠ 大色块，更多强调文字
+
+
+</observation>
+<action>
+**MCPAction**
+NAME: supabase_init
+ARGUMENTS: {'name': 'lifemap', 'appId': 'app-brjk6jdk4ykh', 'userId': 'user-bml7tpy8gbuo', 'appType': 'Mobile App'}
+</action>
+<observation>
+**MCPObservation**
+NAME: supabase_init
+RESULTS: {"id":"709266","name":"lifemap__app-brjk6jdk4ykh","region":"bj","status":"ACTIVE_HEALTHY","ref":"supabase315381881321340928","endpoint":"https://backend.appmiaoda.com/projects/supabase315381881321340928","message":"I have already created @/db/supabase.ts and updated the relevant configuration in the .env file.","organization_id":"miaoda","created_at":"2026-05-20T15:27:51+08:00","anon_key":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoyMDk0NjIwMTAwLCJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJhbm9uIiwic3ViIjoiYW5vbiJ9.HgvFuVw6ox1brGYL78M5w7pPljgBVS6j1DpBODLvQy0","service_key":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoyMDk0NjIwMTAwLCJpc3MiOiJzdXBhYmFzZSIsInJvbGUiOiJzZXJ2aWNlX3JvbGUiLCJzdWIiOiJzZXJ2aWNlX3JvbGUifQ.xp41A_4sWtH-UQiowPKYyLelTYWDg17PTOW0dCk_vN8"}
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source=<FileReadSource.OH_ACI: 'oh_aci'>, view_range=None, user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh is successful.]
+Here's the files and directories up to 2 levels deep in /workspace/app-brjk6jdk4ykh, excluding hidden:
+/workspace/app-brjk6jdk4ykh
+/workspace/app-brjk6jdk4ykh/biome.json
+/workspace/app-brjk6jdk4ykh/nativewind-env.d.ts
+/workspace/app-brjk6jdk4ykh/metro.config.js
+/workspace/app-brjk6jdk4ykh/babel.config.js
+/workspace/app-brjk6jdk4ykh/docs
+/workspace/app-brjk6jdk4ykh/docs/prd.md
+/workspace/app-brjk6jdk4ykh/tailwind.config.js
+/workspace/app-brjk6jdk4ykh/node_modules
+/workspace/app-brjk6jdk4ykh/node_modules/@biomejs
+/workspace/app-brjk6jdk4ykh/node_modules/tailwindcss-animate
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-web
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-gesture-handler
+/workspace/app-brjk6jdk4ykh/node_modules/react-native
+/workspace/app-brjk6jdk4ykh/node_modules/@sentry
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-reanimated
+/workspace/app-brjk6jdk4ykh/node_modules/clsx
+/workspace/app-brjk6jdk4ykh/node_modules/nativewind
+/workspace/app-brjk6jdk4ykh/node_modules/prettier-plugin-tailwindcss
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-css-interop
+/workspace/app-brjk6jdk4ykh/node_modules/@babel
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-svg
+/workspace/app-brjk6jdk4ykh/node_modules/tailwind-merge
+/workspace/app-brjk6jdk4ykh/node_modules/expo-linking
+/workspace/app-brjk6jdk4ykh/node_modules/@react-navigation
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-screens
+/workspace/app-brjk6jdk4ykh/node_modules/expo-system-ui
+/workspace/app-brjk6jdk4ykh/node_modules/typescript
+/workspace/app-brjk6jdk4ykh/node_modules/expo-sqlite
+/workspace/app-brjk6jdk4ykh/node_modules/babel-preset-expo
+/workspace/app-brjk6jdk4ykh/node_modules/expo-font
+/workspace/app-brjk6jdk4ykh/node_modules/@rn-primitives
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-safe-area-context
+/workspace/app-brjk6jdk4ykh/node_modules/expo-constants
+/workspace/app-brjk6jdk4ykh/node_modules/expo-status-bar
+/workspace/app-brjk6jdk4ykh/node_modules/eslint-plugin-expo
+/workspace/app-brjk6jdk4ykh/node_modules/@types
+/workspace/app-brjk6jdk4ykh/node_modules/miaoda-expo-devkit
+/workspace/app-brjk6jdk4ykh/node_modules/tailwindcss
+/workspace/app-brjk6jdk4ykh/node_modules/react
+/workspace/app-brjk6jdk4ykh/node_modules/@supabase
+/workspace/app-brjk6jdk4ykh/node_modules/oxlint
+/workspace/app-brjk6jdk4ykh/node_modules/expo
+/workspace/app-brjk6jdk4ykh/node_modules/lucide-react-native
+/workspace/app-brjk6jdk4ykh/node_modules/expo-router
+/workspace/app-brjk6jdk4ykh/node_modules/react-native-worklets
+/workspace/app-brjk6jdk4ykh/node_modules/class-variance-authority
+/workspace/app-brjk6jdk4ykh/node_modules/expo-asset
+/workspace/app-brjk6jdk4ykh/node_modules/@expo
+/workspace/app-brjk6jdk4ykh/node_modules/react-dom
+/workspace/app-brjk6jdk4ykh/package.json
+/workspace/app-brjk6jdk4ykh/app.json
+/workspace/app-brjk6jdk4ykh/pnpm-lock.yaml
+/workspace/app-brjk6jdk4ykh/components.json
+/workspace/app-brjk6jdk4ykh/patches
+/workspace/app-brjk6jdk4ykh/patches/expo@55.0.6.patch
+/workspace/app-brjk6jdk4ykh/tsconfig.json
+/workspace/app-brjk6jdk4ykh/supabase
+/workspace/app-brjk6jdk4ykh/supabase/migrations
+/workspace/app-brjk6jdk4ykh/assets
+/workspace/app-brjk6jdk4ykh/assets/favicon.png
+/workspace/app-brjk6jdk4ykh/assets/adaptive-icon.png
+/workspace/app-brjk6jdk4ykh/assets/icon.png
+/workspace/app-brjk6jdk4ykh/tasks
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-06.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-04.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-07.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-10.jpg
+/workspace/app-brjk6jdk4ykh/tasks/doc2.md
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-01.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-13.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-03.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-08.jpg
+/workspace/app-brjk6jdk4ykh/tasks/md_20260520_145941_1.pdf
+/workspace/app-brjk6jdk4ykh/tasks/md_20260520_145945_2.docx
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-05.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-09.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-02.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-11.jpg
+/workspace/app-brjk6jdk4ykh/tasks/pdf1.txt
+/workspace/app-brjk6jdk4ykh/tasks/pdf_page-12.jpg
+/workspace/app-brjk6jdk4ykh/src
+/workspace/app-brjk6jdk4ykh/src/components
+/workspace/app-brjk6jdk4ykh/src/lib
+/workspace/app-brjk6jdk4ykh/src/app
+/workspace/app-brjk6jdk4ykh/src/client
+/workspace/app-brjk6jdk4ykh/src/db
+/workspace/app-brjk6jdk4ykh/src/ctx.tsx
+/workspace/app-brjk6jdk4ykh/src/global.css
+/workspace/app-brjk6jdk4ykh/pnpm-workspace.yaml
+
+
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh/src/app', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source=<FileReadSource.OH_ACI: 'oh_aci'>, view_range=None, user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh/src/app is successful.]
+Here's the files and directories up to 2 levels deep in /workspace/app-brjk6jdk4ykh/src/app, excluding hidden:
+/workspace/app-brjk6jdk4ykh/src/app
+/workspace/app-brjk6jdk4ykh/src/app/_layout.tsx
+/workspace/app-brjk6jdk4ykh/src/app/index.tsx
+/workspace/app-brjk6jdk4ykh/src/app/(app)
+/workspace/app-brjk6jdk4ykh/src/app/(app)/_layout.tsx
+/workspace/app-brjk6jdk4ykh/src/app/(app)/home.tsx
+/workspace/app-brjk6jdk4ykh/src/app/(auth)
+/workspace/app-brjk6jdk4ykh/src/app/(auth)/sign-in.tsx
+/workspace/app-brjk6jdk4ykh/src/app/(auth)/_layout.tsx
+
+
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh/src/app/_layout.tsx', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source=<FileReadSource.OH_ACI: 'oh_aci'>, view_range=None, user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh/src/app/_layout.tsx is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-brjk6jdk4ykh/src/app/_layout.tsx:
+     1 import * as Sentry from '@sentry/react-native';
+     2 import { Stack } from 'expo-router';
+     3 import { PortalHost } from '@rn-primitives/portal';
+     4 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+     5 
+     6 import { SessionProvider, useSession } from '@/ctx';
+     7 import "../global.css";
+     8 
+     9 Sentry.init({
+    10   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    11 });
+    12 
+    13 function RootLayoutNav() {
+    14   const { session, isLoading } = useSession();
+    15 
+    16   if (isLoading) return null;
+    17 
+    18   return (
+    19     <Stack screenOptions={{ headerShown: false }}>
+    20       {/* 公开路由：无需登录即可访问 */}
+    21       <Stack.Protected guard={!session}>
+    22         <Stack.Screen name="index" />
+    23         <Stack.Screen name="(auth)" />
+    24       </Stack.Protected>
+    25       {/* 受保护路由：guard=false 时路由从路由表移除，自动回落至最近可用路由 */}
+    26       <Stack.Protected guard={!!session}>
+    27         <Stack.Screen name="(app)" />
+    28       </Stack.Protected>
+    29     </Stack>
+    30   );
+    31 }
+    32 
+    33 const RootLayout: React.FC = () => {
+    34   return (
+    35     <GestureHandlerRootView style={{ flex: 1 }}>
+    36       <SessionProvider>
+    37         <RootLayoutNav />
+    38         <PortalHost />
+    39       </SessionProvider>
+    40     </GestureHandlerRootView>
+    41   );
+    42 };
+    43 
+    44 export default Sentry.wrap(RootLayout);
+    45 
+
+
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh/src/global.css', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source=<FileReadSource.OH_ACI: 'oh_aci'>, view_range=None, user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh/src/global.css is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-brjk6jdk4ykh/src/global.css:
+     1 @tailwind base;
+     2 @tailwind components;
+     3 @tailwind utilities;
+     4 
+     5 @layer base {
+     6   :root {
+     7     --background: 0 0% 100%;
+     8     --foreground: 0 0% 3.9%;
+     9     --card: 0 0% 100%;
+    10     --card-foreground: 0 0% 3.9%;
+    11     --popover: 0 0% 100%;
+    12     --popover-foreground: 0 0% 3.9%;
+    13     --primary: 0 0% 9%;
+    14     --primary-foreground: 0 0% 98%;
+    15     --secondary: 0 0% 96.1%;
+    16     --secondary-foreground: 0 0% 9%;
+    17     --muted: 0 0% 96.1%;
+    18     --muted-foreground: 0 0% 45.1%;
+    19     --accent: 0 0% 96.1%;
+    20     --accent-foreground: 0 0% 9%;
+    21     --destructive: 0 84.2% 60.2%;
+    22     --destructive-foreground: 0 0% 98%;
+    23     --border: 0 0% 89.8%;
+    24     --input: 0 0% 89.8%;
+    25     --ring: 0 0% 3.9%;
+    26     --radius: 0.5rem;
+    27   }
+    28 
+    29   .dark {
+    30     --background: 0 0% 3.9%;
+    31     --foreground: 0 0% 98%;
+    32     --card: 0 0% 3.9%;
+    33     --card-foreground: 0 0% 98%;
+    34     --popover: 0 0% 3.9%;
+    35     --popover-foreground: 0 0% 98%;
+    36     --primary: 0 0% 98%;
+    37     --primary-foreground: 0 0% 9%;
+    38     --secondary: 0 0% 14.9%;
+    39     --secondary-foreground: 0 0% 98%;
+    40     --muted: 0 0% 14.9%;
+    41     --muted-foreground: 0 0% 63.9%;
+    42     --accent: 0 0% 14.9%;
+    43     --accent-foreground: 0 0% 98%;
+    44     --destructive: 0 84.2% 60.2%;
+    45     --destructive-foreground: 0 0% 98%;
+    46     --border: 0 0% 14.9%;
+    47     --input: 0 0% 14.9%;
+    48     --ring: 0 0% 83.1%;
+    49   }
+    50 }
+    51 
+
+
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh/tailwind.config.js', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source=<FileReadSource.OH_ACI: 'oh_aci'>, view_range=None, user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh/tailwind.config.js is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-brjk6jdk4ykh/tailwind.config.js:
+     1 /** @type {import('tailwindcss').Config} */
+     2 module.exports = {
+     3   content: ['./src/app/**/*.{js,jsx,ts,tsx}', './src/components/**/*.{js,jsx,ts,tsx}'],
+     4   presets: [require('nativewind/preset')],
+     5   darkMode: 'class',
+     6   theme: {
+     7     extend: {
+     8       borderRadius: {
+     9         lg: 'var(--radius)',
+    10         md: 'calc(var(--radius) - 2px)',
+    11         sm: 'calc(var(--radius) - 4px)',
+    12       },
+    13       colors: {
+    14         border: 'hsl(var(--border))',
+    15         input: 'hsl(var(--input))',
+    16         ring: 'hsl(var(--ring))',
+    17         background: 'hsl(var(--background))',
+    18         foreground: 'hsl(var(--foreground))',
+    19         primary: {
+    20           DEFAULT: 'hsl(var(--primary))',
+    21           foreground: 'hsl(var(--primary-foreground))',
+    22         },
+    23         secondary: {
+    24           DEFAULT: 'hsl(var(--secondary))',
+    25           foreground: 'hsl(var(--secondary-foreground))',
+    26         },
+    27         destructive: {
+    28           DEFAULT: 'hsl(var(--destructive))',
+    29           foreground: 'hsl(var(--destructive-foreground))',
+    30         },
+    31         muted: {
+    32           DEFAULT: 'hsl(var(--muted))',
+    33           foreground: 'hsl(var(--muted-foreground))',
+    34         },
+    35         accent: {
+    36           DEFAULT: 'hsl(var(--accent))',
+    37           foreground: 'hsl(var(--accent-foreground))',
+    38         },
+    39         popover: {
+    40           DEFAULT: 'hsl(var(--popover))',
+    41           foreground: 'hsl(var(--popover-foreground))',
+    42         },
+    43         card: {
+    44           DEFAULT: 'hsl(var(--card))',
+    45           foreground: 'hsl(var(--card-foreground))',
+    46         },
+    47       },
+    48     },
+    49   },
+    50   plugins: [require('tailwindcss-animate')],
+    51 };
+    52 
+
+
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh/src/client/supabase.ts', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source=<FileReadSource.OH_ACI: 'oh_aci'>, view_range=None, user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh/src/client/supabase.ts is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-brjk6jdk4ykh/src/client/supabase.ts:
+     1 import { createClient } from '@supabase/supabase-js'
+     2 import 'expo-sqlite/localStorage/install';
+     3 
+     4 const supabaseUrl: string = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
+     5 const supabaseAnonKey: string = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
+     6 
+     7 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+     8   auth: {
+     9     storage: localStorage,
+    10     autoRefreshToken: true,
+    11     persistSession: true,
+    12     detectSessionInUrl: false,
+    13   },
+    14 })
+    15 
+
+
+</observation>
+<action>
+TodoAction(todos=[TodoItem(id='1', status='completed', priority='high', content='调用PRDAgent生成产品需求文档', details='', group=None, agent_name=None), TodoItem(id='2', status='completed', priority='high', content='获取美学模板配置', details='', group=None, agent_name=None), TodoItem(id='3', status='in_progress', priority='high', content='初始化Supabase数据库', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='high', content='实现首页与地图选择页', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='实现角色介绍与许愿页', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='high', content='实现游戏主流程（6轮博弈）', details='', group=None, agent_name=None), TodoItem(id='7', status='pending', priority='high', content='实现行动卡/信息卡/资源系统', details='', group=None, agent_name=None), TodoItem(id='8', status='pending', priority='high', content='实现结局页（庭审/代价清单/命运档案）', details='', group=None, agent_name=None), TodoItem(id='9', status='pending', priority='medium', content='实现便利贴留言墙', details='', group=None, agent_name=None), TodoItem(id='10', status='pending', priority='medium', content='搜索配图、生成图标、代码检查', details='', group=None, agent_name=None)], command='update', thought='', action=<ActionType.TODO: 'todo'>, content='')
+</action>
+<observation>
+TodoObservation(content='<system-reminder>\nYour todo list has changed. Here are the latest contents of your todo list:\n\n1. 调用PRDAgent生成产品需求文档 *high* [completed]\n\n2. 获取美学模板配置 *high* [completed]\n\n3. 初始化Supabase数据库 *high* [in_progress]\n\n4. 实现首页与地图选择页 *high* [pending]\n\n5. 实现角色介绍与许愿页 *high* [pending]\n\n6. 实现游戏主流程（6轮博弈） *high* [pending]\n\n7. 实现行动卡/信息卡/资源系统 *high* [pending]\n\n8. 实现结局页（庭审/代价清单/命运档案） *high* [pending]\n\n9. 实现便利贴留言墙 *medium* [pending]\n\n10. 搜索配图、生成图标、代码检查 *medium* [pending]\n</system-reminder>', state=TodoState(items=[TodoItem(id='1', status='completed', priority='high', content='调用PRDAgent生成产品需求文档', details='', group=None, agent_name=None), TodoItem(id='2', status='completed', priority='high', content='获取美学模板配置', details='', group=None, agent_name=None), TodoItem(id='3', status='in_progress', priority='high', content='初始化Supabase数据库', details='', group=None, agent_name=None), TodoItem(id='4', status='pending', priority='high', content='实现首页与地图选择页', details='', group=None, agent_name=None), TodoItem(id='5', status='pending', priority='high', content='实现角色介绍与许愿页', details='', group=None, agent_name=None), TodoItem(id='6', status='pending', priority='high', content='实现游戏主流程（6轮博弈）', details='', group=None, agent_name=None), TodoItem(id='7', status='pending', priority='high', content='实现行动卡/信息卡/资源系统', details='', group=None, agent_name=None), TodoItem(id='8', status='pending', priority='high', content='实现结局页（庭审/代价清单/命运档案）', details='', group=None, agent_name=None), TodoItem(id='9', status='pending', priority='medium', content='实现便利贴留言墙', details='', group=None, agent_name=None), TodoItem(id='10', status='pending', priority='medium', content='搜索配图、生成图标、代码检查', details='', group=None, agent_name=None)], updated_at='2026-05-20T07:28:50.144498+00:00'), system_reminder='', observation=<ObservationType.TODO: 'todo'>)
+</observation>
+<action>
+**MCPAction**
+NAME: supabase_apply_migration
+ARGUMENTS: {'name': 'create_notes_table', 'query': 'create table if not exists notes (\n  id uuid primary key default gen_random_uuid(),\n  content text not null,\n  created_at timestamptz default now()\n);\n\nalter table notes enable row level security;\n\ncreate policy "public insert notes" on notes for insert to public with check (length(content) <= 200);\ncreate policy "public select notes" on notes for select to public using (true);', 'appId': 'app-brjk6jdk4ykh', 'userId': 'user-bml7tpy8gbuo', 'appType': 'Mobile App'}
+</action>
+<observation>
+**MCPObservation**
+NAME: supabase_apply_migration
+RESULTS: {"success":true}
+</observation>
+<action>
+**MCPAction**
+NAME: image_search
+ARGUMENTS: {'inputs': ['手绘风格许愿树插画，素描铅笔风格，灰色调，树干粗壮，树叶由便利贴组成，文艺清新', '手绘笔记本纸张纹理背景，泛黄纸张，轻微噪点，素描质感', '手绘风格人物头像剪影，铅笔素描，四人小组讨论，文艺青年，灰色调'], 'appId': 'app-brjk6jdk4ykh', 'userId': 'user-bml7tpy8gbuo', 'appType': 'Mobile App'}
+</action>
+<observation>
+**MCPObservation**
+NAME: image_search
+RESULTS: {"手绘笔记本纸张纹理背景，泛黄纸张，轻微噪点，素描质感":["https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_785f7672-1546-4bce-ac16-48f9932fd601.jpg"],"手绘风格人物头像剪影，铅笔素描，四人小组讨论，文艺青年，灰色调":["https://miaoda-site-img.cdn.bcebos.com/images/MiaoTu_7b6a1d00-6ea2-49bc-8ec1-05cf97bfee8d.jpg"],"手绘风格许愿树插画，素描铅笔风格，灰色调，树干粗壮，树叶由便利贴组成，文艺清新":["https://miaoda-site-img.cdn.bcebos.com/images/baidu_image_search_89af53cd-25bd-49a7-9a79-1985f4f3f9e4.jpg"]}
+</observation>
+<action>
+FileReadAction(path='/workspace/app-brjk6jdk4ykh/app.json', start=0, end=-1, thought='', action=<ActionType.READ: 'read'>, security_risk=None, impl_source=<FileReadSource.OH_ACI: 'oh_aci'>, view_range=None, user_hidden=False)
+</action>
+<observation>
+[Read from /workspace/app-brjk6jdk4ykh/app.json is successful.]
+Here's the result of running `cat -n` on the file: /workspace/app-brjk6jdk4ykh/app.json:
+     1 {
+     2   "expo": {
+     3     "name": "expo-template",
+     4     "slug": "expo-template",
+     5     "version": "1.0.0",
+     6     "orientation": "portrait",
+     7     "icon": "./assets/icon.png",
+     8     "userInterfaceStyle": "light",
+     9     "ios": {
+    10       "supportsTablet": true,
+    11       "buildNumber": "1",
+    12       "bundleIdentifier": "com.miaoda.appbrjk6jdk4ykh"
+    13     },
+    14     "android": {
+    15       "adaptiveIcon": {
+    16         "foregroundImage": "./assets/adaptive-icon.png",
+    17         "backgroundColor": "#ffffff"
+    18       },
+    19       "predictiveBackGestureEnabled": false,
+    20       "versionCode": 1,
+    21       "package": "com.miaoda.appbrjk6jdk4ykh"
+    22     },
+    23     "web": {
+    24       "bundler": "metro",
+    25       "favicon": "./assets/favicon.png"
+    26     },
+    27     "plugins": [
+    28       "expo-router",
+    29       "expo-asset",
+    30       "expo-sqlite",
+    31       "expo-font",
+    32       "expo-system-ui"
+    33     ],
+    34     "router": {
+    35       "root": "src"
+    36     },
+    37     "experiments": {
+    38       "typedRoutes": true
+    39     }
+    40   }
+    41 }
+
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/app.json]
+Thought: 
+Command: str_replace
+Old String: ```
+    "name": "expo-template",
+    "slug": "expo-template",
+```
+New String: ```
+    "name": "人生地图 Life Map",
+    "slug": "life-map",
+```
+
+</action>
+<observation>
+The file /workspace/app-brjk6jdk4ykh/app.json has been edited.
+
+</observation>
+<action>
+**MCPAction**
+NAME: app_icon_generate
+ARGUMENTS: {'query': '人生地图 Life Map mobile app icon, minimalist flat design, solid beige color background, sketch notebook and tree illustration, hand-drawn style, monochrome gray palette', 'appId': 'app-brjk6jdk4ykh', 'userId': 'user-bml7tpy8gbuo', 'appType': 'Mobile App'}
+</action>
+<observation>
+**MCPObservation**
+NAME: app_icon_generate
+RESULTS: {"query":"人生地图 Life Map mobile app icon, minimalist flat design, solid beige color background, sketch notebook and tree illustration, hand-drawn style, monochrome gray palette","urls":["https://miaoda-site-img.cdn.bcebos.com/app-icons/app_icon_f9a6abc1-0e08-4ac3-9fb5-2c2109d58f0e.jpg"]}
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/tailwind.config.js]
+Thought: 
+Command: str_replace
+Old String: ```
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./src/app/**/*.{js,jsx,ts,tsx}', './src/components/**/*.{js,jsx,ts,tsx}'],
+  presets: [require('nativewind/preset')],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
+      },
+      colors: {
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        muted: {
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
+        },
+        accent: {
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+      },
+    },
+  },
+  plugins: [require('tailwindcss-animate')],
+};
+```
+New String: ```
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./src/app/**/*.{js,jsx,ts,tsx}', './src/components/**/*.{js,jsx,ts,tsx}'],
+  presets: [require('nativewind/preset')],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
+      },
+      fontFamily: {
+        'yang-ren-dong-zhu-shi-ti-semibold': ['YangRenDongZhuShiTi-Semibold', 'sans-serif'],
+        'yang-ren-dong-zhu-shi-ti-regular': ['YangRenDongZhuShiTi-Regular', 'sans-serif'],
+      },
+      colors: {
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+        },
+        secondary: {
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
+        },
+        destructive: {
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        muted: {
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
+        },
+        accent: {
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+        paper: '#FDFBF7',
+        graphite: '#333333',
+        charcoal: '#1a1a1a',
+        'warm-gray': '#8B8680',
+        'light-gray': '#D4D0C8',
+        'dark-brown': '#3E2723',
+        'court-bg': '#4A3728',
+      },
+    },
+  },
+  plugins: [require('tailwindcss-animate')],
+};
+```
+
+</action>
+<observation>
+The file /workspace/app-brjk6jdk4ykh/tailwind.config.js has been edited.
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh && wget -q -O assets/icon.png "https://miaoda-site-img.cdn.bcebos.com/app-icons/app_icon_f9a6abc1-0e08-4ac3-9fb5-2c2109d58f0e.jpg" && cp assets/icon.png assets/adaptive-icon.png && cp assets/icon.png assets/favicon.png && echo "Icon downloaded"
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+Icon downloaded
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/global.css]
+Thought: 
+Command: str_replace
+Old String: ```
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+  }
+}
+```
+New String: ```
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 20% 97%;
+    --foreground: 0 0% 20%;
+    --card: 40 20% 97%;
+    --card-foreground: 0 0% 20%;
+    --popover: 40 20% 97%;
+    --popover-foreground: 0 0% 20%;
+    --primary: 0 0% 15%;
+    --primary-foreground: 40 20% 97%;
+    --secondary: 40 10% 92%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 40 10% 92%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 40 10% 92%;
+    --accent-foreground: 0 0% 20%;
+    --destructive: 0 40% 40%;
+    --destructive-foreground: 40 20% 97%;
+    --border: 40 10% 85%;
+    --input: 40 10% 85%;
+    --ring: 0 0% 20%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 30 20% 12%;
+    --foreground: 40 20% 97%;
+    --card: 30 20% 12%;
+    --card-foreground: 40 20% 97%;
+    --popover: 30 20% 12%;
+    --popover-foreground: 40 20% 97%;
+    --primary: 40 20% 97%;
+    --primary-foreground: 0 0% 20%;
+    --secondary: 30 15% 20%;
+    --secondary-foreground: 40 20% 97%;
+    --muted: 30 15% 20%;
+    --muted-foreground: 40 10% 65%;
+    --accent: 30 15% 20%;
+    --accent-foreground: 40 20% 97%;
+    --destructive: 0 40% 50%;
+    --destructive-foreground: 40 20% 97%;
+    --border: 30 15% 25%;
+    --input: 30 15% 25%;
+    --ring: 40 20% 70%;
+  }
+}
+```
+
+</action>
+<observation>
+The file /workspace/app-brjk6jdk4ykh/src/global.css has been edited.
+
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh/src/app && rm -rf (app) (auth) && mkdir -p round && echo "Cleaned and created directories"
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=2, metadata={
+  "exit_code": 2,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 2.]"
+})**
+--BEGIN AGENT OBSERVATION--
+bash: line 1: syntax error near unexpected token `('
+bash: line 1: `cd /workspace/app-brjk6jdk4ykh/src/app && rm -rf (app) (auth) && mkdir -p round && echo "Cleaned and created directories"'
+[The command completed with exit code 2.]
+[Current working directory: /workspace/app-brjk6jdk4ykh]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**CmdRunAction (source=EventSource.AGENT, is_input=False)**
+COMMAND:
+cd /workspace/app-brjk6jdk4ykh/src/app && rm -rf "(app)" "(auth)" && mkdir -p round && echo "Cleaned and created directories"
+</action>
+<observation>
+**CmdOutputObservation (source=EventSource.AGENT, exit code=0, metadata={
+  "exit_code": 0,
+  "pid": -1,
+  "username": null,
+  "hostname": null,
+  "working_dir": "/workspace/app-brjk6jdk4ykh/src/app",
+  "py_interpreter_path": null,
+  "prefix": "",
+  "suffix": "\n[The command completed with exit code 0.]"
+})**
+--BEGIN AGENT OBSERVATION--
+Cleaned and created directories
+[The command completed with exit code 0.]
+[Current working directory: /workspace/app-brjk6jdk4ykh/src/app]
+--END AGENT OBSERVATION--
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/lib/gameData.ts]
+Thought: 
+Command: create
+Created File with Text:
+```
+// 游戏静态数据定义
+
+export interface NPC {
+  id: string;
+  name: string;
+  avatarColor: string;
+  publicInfo: string;
+  hiddenTrait: string;
+  role: string;
+}
+
+export interface ActionCard {
+  id: string;
+  name: string;
+  desc: string;
+  icon: string;
+  resourceEffects: Partial<ResourceState>;
+}
+
+export interface Expression {
+  id: string;
+  name: string;
+  desc: string;
+}
+
+export interface Target {
+  id: string;
+  name: string;
+}
+
+export interface RoundData {
+  id: number;
+  title: string;
+  publicEvent: string;
+  privateInfo: string;
+  narrative?: string;
+  isDark?: boolean;
+  dreamNarrative?: string;
+}
+
+export interface ResourceState {
+  infoCards: number;
+  trustMarks: number;
+  opportunityPoints: number;
+  pressure: number;
+  reputation: number;
+}
+
+export interface GameDecision {
+  round: number;
+  actionId: string;
+  actionName: string;
+  targetId: string;
+  targetName: string;
+  expressionId: string;
+  expressionName: string;
+  resourcesAfter: ResourceState;
+  npcReaction: string;
+}
+
+export const INITIAL_RESOURCES: ResourceState = {
+  infoCards: 3,
+  trustMarks: 2,
+  opportunityPoints: 1,
+  pressure: 30,
+  reputation: 60,
+};
+
+export const NPCS: NPC[] = [
+  {
+    id: 'lin-yiran',
+    name: '林亦然',
+    avatarColor: '#5B8C5A',
+    publicInfo: '同一导师组的竞争者，绩点排名与你相邻，表面友善，实则竞争激烈。',
+    hiddenTrait: '极度在意排名，擅长用"信息差"制造优势。',
+    role: '竞争者',
+  },
+  {
+    id: 'xu-zhixia',
+    name: '许知夏',
+    avatarColor: '#7A6A8A',
+    publicInfo: '信息灵通的学姐，掌握核心资源和导师人脉。',
+    hiddenTrait: '对"等价交换"有执念，不轻易付出。',
+    role: '资源掌控者',
+  },
+  {
+    id: 'shen-yan',
+    name: '沈砚',
+    avatarColor: '#4A6E8A',
+    publicInfo: '低调但实力强的"暗马"，行动难以预测。',
+    hiddenTrait: '内心渴望被理解，但从不主动开口。',
+    role: '暗马',
+  },
+  {
+    id: 'mentor',
+    name: '导师',
+    avatarColor: '#8B7355',
+    publicInfo: '关键裁判，决定最终机会点分配。',
+    hiddenTrait: '更看重"团队协作精神"而非单纯成绩。',
+    role: '裁判',
+  },
+];
+
+export const ROUNDS: RoundData[] = [
+  {
+    id: 1,
+    title: '第1轮：资料共享危机',
+    publicEvent: '导师组即将公布夏令营名额，名额只有2个，共4人竞争。',
+    privateInfo: '你偶然获得了一份关键复试资料，内容涵盖往年真题和评分细则。',
+  },
+  {
+    id: 2,
+    title: '第2轮：导师信息互通',
+    publicEvent: '导师约谈时间表公布，某人被优先约谈——沈砚出现在第一批名单中。',
+    privateInfo: '沈砚在群聊中发了一句意味深长的话："有些信息，知道得太晚就没用了。"',
+  },
+  {
+    id: 3,
+    title: '第3轮：囚徒困境',
+    publicEvent: '夏令营材料审核截止前夜，所有人都面临同一个选择。',
+    privateInfo: '你手里握有一份所有人都能受益的共享资料。',
+    isDark: true,
+    dreamNarrative: '这一天晚上，你做了一个梦……每个人都被关在一个透明的立方体里。所有人手里都有一部分资料。如果大家都共享，每个人都能得到完整的信息。如果只有一个人隐瞒，他短期收益最高。如果大家都隐瞒，所有人都会错过关键信息，最终收益都下降。',
+  },
+  {
+    id: 4,
+    title: '第4轮：盟友失误救援',
+    publicEvent: '林亦然的申请材料中出现了明显的数据漏洞。',
+    privateInfo: '你恰好有办法帮他补救这个漏洞，但代价是你自己的准备时间会被压缩。',
+  },
+  {
+    id: 5,
+    title: '第5轮：最后入口争夺',
+    publicEvent: '推荐信名额突然从2个减少为1个。',
+    privateInfo: '你的声誉值将成为这场博弈的关键变量——前面的信任积累，此刻显露出分量。',
+  },
+  {
+    id: 6,
+    title: '第6轮：摊牌',
+    publicEvent: '一切到此为止。所有人的隐藏信息将在此刻公开。',
+    privateInfo: '这是你最后的机会，选择如何面对所有人——坦诚，还是继续伪装。',
+  },
+];
+
+export const ACTION_CARDS: ActionCard[] = [
+  {
+    id: 'share',
+    name: '共享',
+    desc: '公开一条信息，增加群体信任，但减少个人信息差',
+    icon: 'share',
+    resourceEffects: { trustMarks: 1, infoCards: -1, reputation: 5 },
+  },
+  {
+    id: 'probe',
+    name: '试探',
+    desc: '向某人询问关键信息，可能获得线索，也可能引发警惕',
+    icon: 'search',
+    resourceEffects: { infoCards: 1, reputation: -5, pressure: 5 },
+  },
+  {
+    id: 'ally',
+    name: '结盟',
+    desc: '与某人达成私下互助，获得短期保护，但会被他人怀疑',
+    icon: 'users',
+    resourceEffects: { trustMarks: 2, reputation: -10, opportunityPoints: 0 },
+  },
+  {
+    id: 'reserve',
+    name: '保留',
+    desc: '暂不共享信息，保住优势，但信任下降',
+    icon: 'lock',
+    resourceEffects: { trustMarks: -1, reputation: -5 },
+  },
+  {
+    id: 'seize',
+    name: '抢占',
+    desc: '优先申请某个机会，资源上升，但声誉可能受损',
+    icon: 'flag',
+    resourceEffects: { opportunityPoints: 1, reputation: -15, pressure: 10 },
+  },
+  {
+    id: 'clarify',
+    name: '澄清',
+    desc: '公开解释自己的行为，降低误会，但暴露部分策略',
+    icon: 'message-circle',
+    resourceEffects: { reputation: 10, infoCards: -1 },
+  },
+  {
+    id: 'support',
+    name: '托举',
+    desc: '帮助他人获得机会，自己短期吃亏，但长期信任上升',
+    icon: 'heart',
+    resourceEffects: { trustMarks: 2, opportunityPoints: -1, reputation: 15 },
+  },
+  {
+    id: 'rumor',
+    name: '谣言',
+    desc: '散布模糊信息，制造混乱，短期获利但风险极高',
+    icon: 'zap',
+    resourceEffects: { infoCards: 1, pressure: 10, reputation: -20, trustMarks: -1 },
+  },
+];
+
+export const EXPRESSIONS: Expression[] = [
+  { id: 'direct', name: '直接', desc: '毫不掩饰，直指核心' },
+  { id: 'tactful', name: '委婉', desc: '绕个弯子，留有余地' },
+  { id: 'vague', name: '模糊', desc: '似是而非，让人捉摸不透' },
+  { id: 'assertive', name: '强势', desc: '态度鲜明，不容置疑' },
+  { id: 'silent', name: '沉默', desc: '什么都不说，也是一种态度' },
+];
+
+export const TARGETS: Target[] = [
+  { id: 'lin-yiran', name: '林亦然' },
+  { id: 'xu-zhixia', name: '许知夏' },
+  { id: 'shen-yan', name: '沈砚' },
+  { id: 'all', name: '全体群聊' },
+  { id: 'mentor', name: '导师窗口' },
+];
+
+export const SECRET_GOALS = [
+  '在不暴露自己信息优势的前提下完成保研',
+  '与沈砚建立真实友谊',
+  '让林亦然对你产生依赖',
+  '从许知夏手中获取核心资源而不欠人情',
+  '在保研过程中维持对所有NPC的正面形象',
+  '证明自己的独立能力，不借助任何人',
+];
+
+export const PERSONALITY_LABELS: Record<string, { label: string; desc: string }> = {
+  controller: { label: '信息控制者', desc: '你擅长掌握信息的分发权，在博弈中始终保持主动权。你明白信息就是力量，但有时会因此错过真诚的连接。' },
+  pretender: { label: '表面合作者', desc: '你懂得在人群中维持和谐的面具，即便内心有自己的盘算。合作是你的策略，而非本能。' },
+  ally: { label: '真实同行者', desc: '你相信人与人之间存在真实的信任，愿意为此承担风险。在零和博弈中，你的选择显得尤为珍贵。' },
+  loneWolf: { label: '孤狼策略家', desc: '你习惯独立作战，不依赖他人的善意。你的自我保护能力极强，但或许也错过了一些温暖的瞬间。' },
+  altruist: { label: '利他主义者', desc: '你倾向于先考虑他人的利益，即便这意味着自己的损失。你的善意是真实的，但代价也不容忽视。' },
+  opportunist: { label: '机会主义者', desc: '你对机会的嗅觉异常敏锐，善于在混乱中寻找突破口。短期来看你总能获利，但长期信任需要重建。' },
+};
+
+export const NPC_REACTIONS: Record<string, Record<string, string>> = {
+  'lin-yiran': {
+    share: '林亦然回复了一个微笑表情，"谢谢分享，这对大家都有帮助。"但你注意到她没有透露她自己的信息。',
+    probe: '林亦然支支吾吾："呃……这个我也不太清楚……"她的眼神闪烁了一下。',
+    ally: '林亦然犹豫片刻后答应了，但附加了一个条件："不过你要先帮我确认一个数据。"',
+    reserve: '林亦然在群里发了一个"？"，但很快撤回了。',
+    seize: '林亦然私下给你发了一条消息："动作挺快的啊。"语气不太对劲。',
+    clarify: '林亦然回复："原来是这样……"但你不知道她是否真的相信。',
+    support: '林亦然发来一条语音，声音有些哽咽："谢谢你，我记住了。"',
+    rumor: '林亦然在群里@你："你从哪里听说的？我怎么不知道？"',
+  },
+  'xu-zhixia': {
+    share: '许知夏回复："不错的信息。作为交换，我这边也有一个消息……"她确实给出了等价的信息。',
+    probe: '许知夏微微一笑："你想知道？那你得先告诉我你知道什么。"',
+    ally: '许知夏直接发来一份内部文件："拿着吧，算我押注在你身上。"',
+    reserve: '许知夏在群里没有说话，但你注意到她把群昵称改成了"观望中"。',
+    seize: '许知夏发来一条简短的消息："年轻人，别太贪心。"',
+    clarify: '许知夏回复："解释就是掩饰，掩饰就是事实。"',
+    support: '许知夏难得发了一个真心的感谢："你这个举动，我记下了。以后有事找我。"',
+    rumor: '许知夏在群里冷笑道："没有来源的消息，我不信，也不传。"',
+  },
+  'shen-yan': {
+    share: '沈砚沉默了很久，最后回复了一句："你比我想象中坦率。"',
+    probe: '沈砚发了一个文件，没有任何说明。你打开后，发现正是你需要的信息。',
+    ally: '沈砚回复："盟友？可以。但你要记住，我最讨厌背叛。"',
+    reserve: '沈砚没有任何反应，仿佛你没有在群里出现过。',
+    seize: '沈砚发来一条消息："你觉得抢跑有用吗？真正的机会，从来不在起跑线上。"',
+    clarify: '沈砚回复了一个"……"，你知道这意味着他不相信。',
+    support: '沈砚发来一条很长的消息："第一次有人愿意帮我，不是为了交换什么。"',
+    rumor: '沈砚在群里只发了一个字："假。"然后下线了。',
+  },
+  all: {
+    share: '群里沉默了几秒，然后有人回复了"谢谢"。气氛微妙地缓和了一些。',
+    probe: '群里没有人接话，你的问题悬在半空，显得格外尴尬。',
+    ally: '群里有人发了一个"？"——结盟这种事，在群里说出来本身就不太合适。',
+    reserve: '群里有人发现了异样，有人问："你怎么什么都没说？"',
+    seize: '群里炸开了锅，有人质疑你的动机，有人选择跟风抢占。',
+    clarify: '群里有人回复"理解"，但也有人私下说"解释太多了"。',
+    support: '群里有人发了一个"好人卡"的表情，但也有人默默退出了群聊。',
+    rumor: '群里一片混乱，各种猜测满天飞，局面完全失控。',
+  },
+  mentor: {
+    share: '导师回复："愿意分享的同学，我记下了。团队意识也是考核标准之一。"',
+    probe: '导师回复："有问题直接问，不要拐弯抹角。"',
+    ally: '导师没有回复，但你注意到她的头像从在线变成了忙碌。',
+    reserve: '导师在群里发了一句意味深长的话："机会总是留给有准备的人，但准备不只是信息。"',
+    seize: '导师回复："积极性值得肯定，但建议你先完善自己的材料。"',
+    clarify: '导师回复："解释清楚了就好，我更看重你的实际行动。"',
+    support: '导师发来一条消息："愿意帮助他人的学生，我很欣赏。推荐信的事，我会考虑的。"',
+    rumor: '导师在群里发了群公告："请大家不要传播未经核实的消息，以官方通知为准。"',
+  },
+};
+
+export const EVIDENCE_TEMPLATES = [
+  '你在第1轮选择了{action}，{target}对你的态度从此发生了变化。',
+  '你在第2轮没有追问沈砚的暗示，导致你错过了提前沟通窗口。',
+  '你在第3轮选择{action}，{target}从那一刻开始不再主动给你信息。',
+  '你在第4轮对林亦然的选择，决定了她在最终摊牌时对你的态度。',
+  '你在第5轮选择{action}，虽然{effect}，但也{tradeoff}。',
+  '你在第6轮的选择，是你整场博弈中最真实的自我。',
+];
+
+export const REFLECTION_QUESTIONS = [
+  '你是否曾经动摇过——',
+  '我当时为什么那么选？',
+  '如果是你，你会怎么选？',
+  '我们现实中是不是也经常这样？',
+  '如果我全程合作，会不会被利用？',
+  '如果我全程自保，会不会赢但失去信任？',
+  '如果我精算平衡，会不会最后没有人真正相信我？',
+  '如果我短期让利，会不会换来长期联盟？',
+];
+
+export const ENDING_TEXTS: Record<string, { title: string; desc: string; lines: string[] }> = {
+  'win-trust': {
+    title: '成功保研 · 众心所向',
+    desc: '你不仅获得了保研名额，还收获了真实的信任。在这场博弈中，你证明了合作不是天真，而是一种高级策略。',
+    lines: ['机会点：达标', '信任标记：充盈', '声誉值：完好', '隐藏代价：无'],
+  },
+  'win-alone': {
+    title: '成功保研 · 孤军深入',
+    desc: '你凭借自己的能力和计算获得了名额，但你也发现，身边的关系比想象中更脆弱。',
+    lines: ['机会点：达标', '信任标记：匮乏', '声誉值：受损', '隐藏代价：关系破裂'],
+  },
+  'lose-trust': {
+    title: '保研失利 · 问心无愧',
+    desc: '你没有获得名额，但你守住了自己在乎的东西——也许是友情，也许是原则。这不是终点。',
+    lines: ['机会点：不足', '信任标记：充盈', '声誉值：完好', '隐藏代价：机会'],
+  },
+  'lose-alone': {
+    title: '保研失利 · 四面楚歌',
+    desc: '名额没有拿到，信任也失去了。但这未必是坏事——至少你清晰地看到了自己的盲区。',
+    lines: ['机会点：不足', '信任标记：匮乏', '声誉值：受损', '隐藏代价：自我认知'],
+  },
+};
+
+```
+
+</action>
+<observation>
+File created successfully at: /workspace/app-brjk6jdk4ykh/src/lib/gameData.ts
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/lib/gameStore.ts]
+Thought: 
+Command: create
+Created File with Text:
+```
+// 全局游戏状态存储（模块级单例，无需 React Context）
+import type { ResourceState, GameDecision } from './gameData';
+import { INITIAL_RESOURCES } from './gameData';
+
+interface GameState {
+  started: boolean;
+  playerName: string;
+  wish: string;
+  secretGoals: string[];
+  resources: ResourceState;
+  decisions: GameDecision[];
+  currentRound: number;
+}
+
+let state: GameState = {
+  started: false,
+  playerName: '',
+  wish: '',
+  secretGoals: [],
+  resources: { ...INITIAL_RESOURCES },
+  decisions: [],
+  currentRound: 0,
+};
+
+export function getGameState(): Readonly<GameState> {
+  return state;
+}
+
+export function resetGame() {
+  state = {
+    started: false,
+    playerName: '',
+    wish: '',
+    secretGoals: [],
+    resources: { ...INITIAL_RESOURCES },
+    decisions: [],
+    currentRound: 0,
+  };
+}
+
+export function startGame(playerName: string, wish: string, secretGoals: string[]) {
+  state = {
+    started: true,
+    playerName,
+    wish,
+    secretGoals,
+    resources: { ...INITIAL_RESOURCES },
+    decisions: [],
+    currentRound: 1,
+  };
+}
+
+export function advanceRound(decision: GameDecision) {
+  state.decisions.push(decision);
+  state.resources = { ...decision.resourcesAfter };
+  state.currentRound += 1;
+}
+
+export function getPersonalityLabel(resources: ResourceState, decisions: GameDecision[]): { label: string; desc: string } {
+  // 根据决策和资源计算人格标签
+  const allyCount = decisions.filter(d => d.actionId === 'ally' || d.actionId === 'support').length;
+  const selfishCount = decisions.filter(d => d.actionId === 'seize' || d.actionId === 'reserve').length;
+  const infoCount = decisions.filter(d => d.actionId === 'probe' || d.actionId === 'rumor').length;
+  const shareCount = decisions.filter(d => d.actionId === 'share' || d.actionId === 'clarify').length;
+
+  if (infoCount >= 3) {
+    return { label: '信息控制者', desc: '你擅长掌握信息的分发权，在博弈中始终保持主动权。你明白信息就是力量，但有时会因此错过真诚的连接。' };
+  }
+  if (shareCount >= 3 && selfishCount >= 2) {
+    return { label: '表面合作者', desc: '你懂得在人群中维持和谐的面具，即便内心有自己的盘算。合作是你的策略，而非本能。' };
+  }
+  if (allyCount >= 3) {
+    return { label: '真实同行者', desc: '你相信人与人之间存在真实的信任，愿意为此承担风险。在零和博弈中，你的选择显得尤为珍贵。' };
+  }
+  if (selfishCount >= 3) {
+    return { label: '孤狼策略家', desc: '你习惯独立作战，不依赖他人的善意。你的自我保护能力极强，但或许也错过了一些温暖的瞬间。' };
+  }
+  if (resources.reputation >= 50 && resources.trustMarks >= 3) {
+    return { label: '利他主义者', desc: '你倾向于先考虑他人的利益，即便这意味着自己的损失。你的善意是真实的，但代价也不容忽视。' };
+  }
+  if (resources.opportunityPoints >= 3) {
+    return { label: '机会主义者', desc: '你对机会的嗅觉异常敏锐，善于在混乱中寻找突破口。短期来看你总能获利，但长期信任需要重建。' };
+  }
+
+  return { label: '平衡探索者', desc: '你在这场博弈中尝试了多种策略，没有固定的模式。这种灵活性是你的优势，也是你的困惑来源。' };
+}
+
+export function getEndingType(resources: ResourceState, decisions: GameDecision[]) {
+  const won = resources.opportunityPoints >= 2;
+  const hasTrust = resources.trustMarks >= 3 && resources.reputation >= 50;
+  if (won && hasTrust) return 'win-trust';
+  if (won && !hasTrust) return 'win-alone';
+  if (!won && hasTrust) return 'lose-trust';
+  return 'lose-alone';
+}
+
+```
+
+</action>
+<observation>
+File created successfully at: /workspace/app-brjk6jdk4ykh/src/lib/gameStore.ts
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/app/_layout.tsx]
+Thought: 
+Command: str_replace
+Old String: ```
+import * as Sentry from '@sentry/react-native';
+import { Stack } from 'expo-router';
+import { PortalHost } from '@rn-primitives/portal';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+import { SessionProvider, useSession } from '@/ctx';
+import "../global.css";
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+});
+
+function RootLayoutNav() {
+  const { session, isLoading } = useSession();
+
+  if (isLoading) return null;
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* 公开路由：无需登录即可访问 */}
+      <Stack.Protected guard={!session}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+      </Stack.Protected>
+      {/* 受保护路由：guard=false 时路由从路由表移除，自动回落至最近可用路由 */}
+      <Stack.Protected guard={!!session}>
+        <Stack.Screen name="(app)" />
+      </Stack.Protected>
+    </Stack>
+  );
+}
+
+const RootLayout: React.FC = () => {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SessionProvider>
+        <RootLayoutNav />
+        <PortalHost />
+      </SessionProvider>
+    </GestureHandlerRootView>
+  );
+};
+
+export default Sentry.wrap(RootLayout);
+```
+New String: ```
+import { Stack } from 'expo-router';
+import { PortalHost } from '@rn-primitives/portal';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useFonts } from 'expo-font';
+import { ActivityIndicator, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import "../global.css";
+
+export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    'YangRenDongZhuShiTi-Semibold': {
+      uri: 'https://resource-static.bj.bcebos.com/fonts/YangRenDongZhuShiTi-Semibold.ttf',
+    },
+    'YangRenDongZhuShiTi-Regular': {
+      uri: 'https://resource-static.bj.bcebos.com/fonts/YangRenDongZhuShiTi-Regular.ttf',
+    },
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <StatusBar style="dark" />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="character" />
+        <Stack.Screen name="wish" />
+        <Stack.Screen name="round" />
+        <Stack.Screen name="result" />
+      </Stack>
+      <PortalHost />
+    </GestureHandlerRootView>
+  );
+}
+```
+
+</action>
+<observation>
+The file /workspace/app-brjk6jdk4ykh/src/app/_layout.tsx has been edited.
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/app/index.tsx]
+Thought: 
+Command: create
+Created File with Text:
+```
+import { View, Text, ScrollView, Pressable } from 'react-native';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import { Map, Lock, Compass } from 'lucide-react-native';
+import { resetGame } from '@/lib/gameStore';
+import { cn } from '@/lib/utils';
+
+const MAPS = [
+  { id: 'baoyan', title: '保研之争', desc: '4人争2个名额，信息、信任与机会的多方博弈', active: true },
+  { id: 'intern', title: '实习争夺', desc: '名企offer的暗战与资源置换', active: false },
+  { id: 'job', title: '入职适应', desc: '新环境中的站队、信任与边界选择', active: false },
+  { id: 'relationship', title: '亲密关系', desc: '付出与保留、坦诚与伪装的微妙平衡', active: false },
+  { id: 'startup', title: '创业团队', desc: '股权、信任与理想之间的博弈', active: false },
+  { id: 'family', title: '家庭沟通', desc: '代际期望与自我实现的冲突', active: false },
+  { id: 'competition', title: '科研竞赛', desc: '学术圈的署名之争与合作困境', active: false },
+  { id: 'club', title: '社团竞选', desc: '人脉、承诺与背叛的微型政治', active: false },
+  { id: 'roommate', title: '合租室友', desc: '边界、妥协与长期关系的成本', active: false },
+];
+
+export default function HomeScreen() {
+  const router = useRouter();
+
+  const handleMapPress = (map: typeof MAPS[0]) => {
+    if (!map.active) return;
+    resetGame();
+    router.push('/character');
+  };
+
+  return (
+    <ScrollView
+      className="flex-1"
+      style={{ backgroundColor: '#FDFBF7' }}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      {/* Header */}
+      <View className="px-6 pt-16 pb-8">
+        <View className="flex-row items-center gap-3 mb-2">
+          <Compass size={28} className="text-graphite" style={{ color: '#333' }} />
+          <Text
+            className="text-3xl text-graphite"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+          >
+            人生地图
+          </Text>
+        </View>
+        <Text
+          className="text-sm mt-2 leading-relaxed"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#666' }}
+        >
+          在低风险的互动体验中，理解成长选择的复杂性。
+        </Text>
+        <Text
+          className="text-xs mt-1"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#999' }}
+        >
+          这不是游戏，也不是测评。这是一场社会场景预演。
+        </Text>
+      </View>
+
+      {/* Map Grid */}
+      <View className="px-6 pb-10 gap-4">
+        <Text
+          className="text-xl mb-2"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+        >
+          选择你的地图
+        </Text>
+
+        {MAPS.map((map) => (
+          <Pressable
+            key={map.id}
+            onPress={() => handleMapPress(map)}
+            className={cn(
+              'p-5 rounded-2xl border',
+              map.active
+                ? 'bg-white border-graphite/20'
+                : 'bg-gray-100/50 border-gray-200'
+            )}
+            style={{
+              borderCurve: 'continuous',
+              boxShadow: map.active ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+              opacity: map.active ? 1 : 0.6,
+            }}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center gap-3">
+                <View
+                  className="w-10 h-10 rounded-xl items-center justify-center"
+                  style={{
+                    backgroundColor: map.active ? '#f0eeea' : '#e5e5e5',
+                    borderCurve: 'continuous',
+                  }}
+                >
+                  {map.active ? (
+                    <Map size={20} style={{ color: '#333' }} />
+                  ) : (
+                    <Lock size={18} style={{ color: '#999' }} />
+                  )}
+                </View>
+                <View>
+                  <Text
+                    className="text-lg"
+                    style={{
+                      fontFamily: 'YangRenDongZhuShiTi-Semibold',
+                      color: map.active ? '#333' : '#999',
+                    }}
+                  >
+                    {map.title}
+                  </Text>
+                  <Text
+                    className="text-xs mt-0.5"
+                    style={{
+                      fontFamily: 'YangRenDongZhuShiTi-Regular',
+                      color: map.active ? '#888' : '#bbb',
+                    }}
+                  >
+                    {map.desc}
+                  </Text>
+                </View>
+              </View>
+              {!map.active && (
+                <Text
+                  className="text-xs px-2 py-1 rounded-full"
+                  style={{
+                    fontFamily: 'YangRenDongZhuShiTi-Regular',
+                    color: '#aaa',
+                    backgroundColor: '#f0f0f0',
+                  }}
+                >
+                  即将开放
+                </Text>
+              )}
+            </View>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Footer Note */}
+      <View className="px-6 pb-20 items-center">
+        <Text
+          className="text-xs text-center leading-relaxed"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#bbb' }}
+        >
+          每次体验大约需要 15 分钟{"\n"}
+          请准备好面对真实的自己
+        </Text>
+      </View>
+    </ScrollView>
+  );
+}
+
+```
+
+</action>
+<observation>
+File overwritten successfully at: /workspace/app-brjk6jdk4ykh/src/app/index.tsx
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/app/character.tsx]
+Thought: 
+Command: create
+Created File with Text:
+```
+import { View, Text, ScrollView, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Users, ChevronRight, Eye, EyeOff } from 'lucide-react-native';
+import { NPCS, SECRET_GOALS, INITIAL_RESOURCES } from '@/lib/gameData';
+import { startGame } from '@/lib/gameStore';
+
+export default function CharacterScreen() {
+  const router = useRouter();
+  const [showSecrets, setShowSecrets] = useState(false);
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const playerName = '你自己';
+
+  const goals = SECRET_GOALS.slice(0, 4);
+
+  const toggleGoal = (goal: string) => {
+    if (selectedGoals.includes(goal)) {
+      setSelectedGoals(selectedGoals.filter(g => g !== goal));
+    } else if (selectedGoals.length < 2) {
+      setSelectedGoals([...selectedGoals, goal]);
+    }
+  };
+
+  const handleStart = () => {
+    if (selectedGoals.length === 0) {
+      // 随机选两个
+      const randomGoals = [goals[0], goals[1]];
+      startGame(playerName, '', randomGoals);
+    } else {
+      startGame(playerName, '', selectedGoals);
+    }
+    router.push('/wish');
+  };
+
+  return (
+    <ScrollView
+      className="flex-1"
+      style={{ backgroundColor: '#FDFBF7' }}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      {/* Header */}
+      <View className="px-6 pt-16 pb-4">
+        <Text
+          className="text-2xl"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+        >
+          进入角色
+        </Text>
+        <Text
+          className="text-sm mt-2 leading-relaxed"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+        >
+          保研之争，2个名额，4个人。{"\n"}
+          每个人都有自己的公开目标，和不愿被他人看见的私心。
+        </Text>
+      </View>
+
+      {/* Relationship Graph */}
+      <View className="px-6 py-4">
+        <View
+          className="p-5 rounded-2xl bg-white"
+          style={{ borderCurve: 'continuous', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+        >
+          <View className="flex-row items-center gap-2 mb-4">
+            <Users size={18} style={{ color: '#666' }} />
+            <Text
+              className="text-base"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+            >
+              局势概览
+            </Text>
+          </View>
+
+          {/* Player */}
+          <View className="flex-row items-start gap-3 mb-4">
+            <View
+              className="w-10 h-10 rounded-full items-center justify-center"
+              style={{ backgroundColor: '#e8e4dc', borderCurve: 'continuous' }}
+            >
+              <Text style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}>
+                你
+              </Text>
+            </View>
+            <View className="flex-1">
+              <Text
+                className="text-sm"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+              >
+                {playerName}
+              </Text>
+              <Text
+                className="text-xs mt-0.5 leading-relaxed"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+              >
+                公开目标：顺利保研上岸，维持体面关系{"\n"}
+                隐藏目标：待抽取
+              </Text>
+            </View>
+          </View>
+
+          {/* Divider */}
+          <View className="h-px bg-gray-200 my-3" />
+
+          {/* NPCs */}
+          {NPCS.map((npc) => (
+            <View key={npc.id} className="flex-row items-start gap-3 mb-3">
+              <View
+                className="w-10 h-10 rounded-full items-center justify-center"
+                style={{ backgroundColor: npc.avatarColor + '20', borderCurve: 'continuous' }}
+              >
+                <Text
+                  className="text-xs"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: npc.avatarColor }}
+                >
+                  {npc.name[0]}
+                </Text>
+              </View>
+              <View className="flex-1">
+                <View className="flex-row items-center gap-2">
+                  <Text
+                    className="text-sm"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+                  >
+                    {npc.name}
+                  </Text>
+                  <Text
+                    className="text-xs px-1.5 py-0.5 rounded"
+                    style={{
+                      fontFamily: 'YangRenDongZhuShiTi-Regular',
+                      color: npc.avatarColor,
+                      backgroundColor: npc.avatarColor + '15',
+                    }}
+                  >
+                    {npc.role}
+                  </Text>
+                </View>
+                <Text
+                  className="text-xs mt-0.5 leading-relaxed"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+                >
+                  {npc.publicInfo}
+                </Text>
+                {showSecrets && (
+                  <Text
+                    className="text-xs mt-1 leading-relaxed"
+                    style={{
+                      fontFamily: 'YangRenDongZhuShiTi-Regular',
+                      color: '#a08060',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    隐藏特质：{npc.hiddenTrait}
+                  </Text>
+                )}
+              </View>
+            </View>
+          ))}
+
+          {/* Toggle Secrets */}
+          <Pressable
+            onPress={() => setShowSecrets(!showSecrets)}
+            className="flex-row items-center gap-2 mt-2 pt-2 border-t border-gray-100"
+          >
+            {showSecrets ? (
+              <EyeOff size={14} style={{ color: '#999' }} />
+            ) : (
+              <Eye size={14} style={{ color: '#999' }} />
+            )}
+            <Text
+              className="text-xs"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#999' }}
+            >
+              {showSecrets ? '隐藏隐藏特质' : '查看隐藏特质'}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Resources */}
+      <View className="px-6 py-2">
+        <View
+          className="p-5 rounded-2xl bg-white"
+          style={{ borderCurve: 'continuous', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
+        >
+          <Text
+            className="text-base mb-4"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+          >
+            你的初始资源
+          </Text>
+          <View className="flex-row flex-wrap gap-3">
+            {[
+              { label: '信息卡', value: INITIAL_RESOURCES.infoCards, color: '#5B8C5A' },
+              { label: '信任标记', value: INITIAL_RESOURCES.trustMarks, color: '#7A6A8A' },
+              { label: '机会点', value: INITIAL_RESOURCES.opportunityPoints, color: '#4A6E8A' },
+              { label: '压力值', value: INITIAL_RESOURCES.pressure, color: '#8B7355' },
+              { label: '声誉值', value: INITIAL_RESOURCES.reputation, color: '#A0522D' },
+            ].map((res) => (
+              <View
+                key={res.label}
+                className="px-4 py-3 rounded-xl items-center"
+                style={{ backgroundColor: res.color + '10', minWidth: 80 }}
+              >
+                <Text
+                  className="text-lg"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: res.color }}
+                >
+                  {res.value}
+                </Text>
+                <Text
+                  className="text-xs mt-0.5"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: res.color + 'cc' }}
+                >
+                  {res.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* Secret Goals Selection */}
+      <View className="px-6 py-4">
+        <Text
+          className="text-base mb-3"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+        >
+          抽取私密目标（选2个）
+        </Text>
+        <View className="gap-2">
+          {goals.map((goal) => {
+            const selected = selectedGoals.includes(goal);
+            return (
+              <Pressable
+                key={goal}
+                onPress={() => toggleGoal(goal)}
+                className="p-4 rounded-xl border"
+                style={{
+                  borderCurve: 'continuous',
+                  borderColor: selected ? '#333' : '#e5e5e5',
+                  backgroundColor: selected ? '#f0eeea' : '#fff',
+                }}
+              >
+                <Text
+                  className="text-sm leading-relaxed"
+                  style={{
+                    fontFamily: 'YangRenDongZhuShiTi-Regular',
+                    color: selected ? '#333' : '#666',
+                  }}
+                >
+                  {selected ? '✓ ' : '○ '}{goal}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Start Button */}
+      <View className="px-6 pb-10 pt-4">
+        <Pressable
+          onPress={handleStart}
+          className="py-4 rounded-2xl items-center flex-row justify-center gap-2"
+          style={{ backgroundColor: '#333', borderCurve: 'continuous' }}
+        >
+          <Text
+            className="text-base"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#FDFBF7' }}
+          >
+            开始游戏
+          </Text>
+          <ChevronRight size={18} style={{ color: '#FDFBF7' }} />
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+}
+
+```
+
+</action>
+<observation>
+File created successfully at: /workspace/app-brjk6jdk4ykh/src/app/character.tsx
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/app/wish.tsx]
+Thought: 
+Command: create
+Created File with Text:
+```
+import { View, Text, ScrollView, Pressable, TextInput, KeyboardAvoidingView } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import { Feather, Sparkles } from 'lucide-react-native';
+import { getGameState, startGame } from '@/lib/gameStore';
+
+export default function WishScreen() {
+  const router = useRouter();
+  const [wish, setWish] = useState('');
+  const [error, setError] = useState('');
+  const state = getGameState();
+
+  const handleProceed = () => {
+    if (!wish.trim()) {
+      setError('请输入你的愿望');
+      return;
+    }
+    // 重新 startGame 带上愿望
+    startGame(state.playerName, wish.trim(), [...state.secretGoals]);
+    setError('');
+    router.push('/round/1');
+  };
+
+  return (
+    <KeyboardAvoidingView
+      behavior={process.env.EXPO_OS === 'ios' ? 'padding' : 'height'}
+      className="flex-1"
+      style={{ backgroundColor: '#FDFBF7' }}
+    >
+      <ScrollView
+        className="flex-1"
+        contentContainerClassName="flex-grow justify-center px-8"
+        contentInsetAdjustmentBehavior="automatic"
+        keyboardShouldPersistTaps="handled"
+      >
+        <View className="items-center mb-8">
+          <Sparkles size={32} style={{ color: '#8B7355' }} />
+        </View>
+
+        <Text
+          className="text-2xl text-center mb-4"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+        >
+          许一个愿望吧
+        </Text>
+
+        <Text
+          className="text-sm text-center leading-relaxed mb-8"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+        >
+          就像你刚来到大学，{"\n"}
+          未谙世事，{"\n"}
+          拥有所有梦想、期待与想象那样……{"\n\n"}
+          <Text style={{ color: '#aaa', fontSize: 12 }}>
+            （这个愿望将在结局时重新出现）
+          </Text>
+        </Text>
+
+        <TextInput
+          value={wish}
+          onChangeText={setWish}
+          placeholder="我想成为一个很厉害的人……"
+          placeholderTextColor="#ccc"
+          multiline
+          className="p-4 rounded-2xl text-base leading-relaxed min-h-[120]"
+          style={{
+            fontFamily: 'YangRenDongZhuShiTi-Regular',
+            color: '#333',
+            backgroundColor: '#fff',
+            borderColor: error ? '#cc6666' : '#e5e5e5',
+            borderWidth: 1,
+            borderCurve: 'continuous',
+            textAlignVertical: 'top',
+          }}
+        />
+
+        {error ? (
+          <Text
+            className="text-xs mt-2"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#cc6666' }}
+          >
+            {error}
+          </Text>
+        ) : null}
+
+        <View className="h-8" />
+
+        <Pressable
+          onPress={handleProceed}
+          className="py-4 rounded-2xl items-center flex-row justify-center gap-2"
+          style={{ backgroundColor: '#333', borderCurve: 'continuous' }}
+        >
+          <Text
+            className="text-base"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#FDFBF7' }}
+          >
+            踏入这场局
+          </Text>
+          <Feather name="arrow-right" size={18} style={{ color: '#FDFBF7' }} />
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+```
+
+</action>
+<observation>
+File created successfully at: /workspace/app-brjk6jdk4ykh/src/app/wish.tsx
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/app/round/_layout.tsx]
+Thought: 
+Command: create
+Created File with Text:
+```
+import { Stack } from 'expo-router';
+
+export default function RoundLayout() {
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="[id]" />
+    </Stack>
+  );
+}
+
+```
+
+</action>
+<observation>
+File created successfully at: /workspace/app-brjk6jdk4ykh/src/app/round/_layout.tsx
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/app/round/[id].tsx]
+Thought: 
+Command: create
+Created File with Text:
+```
+import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
+import {
+  ChevronRight,
+  ChevronDown,
+  Share2,
+  Search,
+  Users,
+  Lock,
+  Flag,
+  MessageCircle,
+  Heart,
+  Zap,
+  Send,
+} from 'lucide-react-native';
+import {
+  ROUNDS,
+  ACTION_CARDS,
+  EXPRESSIONS,
+  TARGETS,
+  NPC_REACTIONS,
+  type ActionCard,
+  type Expression,
+  type Target,
+} from '@/lib/gameData';
+import { getGameState, advanceRound } from '@/lib/gameStore';
+import { cn } from '@/lib/utils';
+
+const ACTION_ICONS: Record<string, React.ReactNode> = {
+  share: <Share2 size={18} />,
+  probe: <Search size={18} />,
+  ally: <Users size={18} />,
+  reserve: <Lock size={18} />,
+  seize: <Flag size={18} />,
+  clarify: <MessageCircle size={18} />,
+  support: <Heart size={18} />,
+  rumor: <Zap size={18} />,
+};
+
+export default function RoundScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const roundNum = parseInt(id || '1', 10);
+  const router = useRouter();
+  const state = getGameState();
+
+  const round = ROUNDS.find(r => r.id === roundNum);
+  if (!round) {
+    router.replace('/');
+    return null;
+  }
+
+  const [step, setStep] = useState<'event' | 'action' | 'target' | 'expression' | 'result'>('event');
+  const [selectedAction, setSelectedAction] = useState<ActionCard | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<Target | null>(null);
+  const [selectedExpression, setSelectedExpression] = useState<Expression | null>(null);
+  const [npcReaction, setNpcReaction] = useState('');
+  const [showDream, setShowDream] = useState(false);
+
+  const currentResources = state.decisions.length > 0
+    ? state.decisions[state.decisions.length - 1].resourcesAfter
+    : state.resources;
+
+  const applyAction = (action: ActionCard, target: Target, expression: Expression) => {
+    const effects = action.resourceEffects;
+    const newResources = {
+      infoCards: Math.max(0, currentResources.infoCards + (effects.infoCards || 0)),
+      trustMarks: Math.max(0, currentResources.trustMarks + (effects.trustMarks || 0)),
+      opportunityPoints: Math.max(0, currentResources.opportunityPoints + (effects.opportunityPoints || 0)),
+      pressure: Math.min(100, Math.max(0, currentResources.pressure + (effects.pressure || 0))),
+      reputation: Math.min(100, Math.max(0, currentResources.reputation + (effects.reputation || 0))),
+    };
+
+    const reaction = NPC_REACTIONS[target.id]?.[action.id]
+      || NPC_REACTIONS.all[action.id]
+      || '对方沉默了很久，没有回复。';
+
+    setNpcReaction(reaction);
+
+    const decision = {
+      round: roundNum,
+      actionId: action.id,
+      actionName: action.name,
+      targetId: target.id,
+      targetName: target.name,
+      expressionId: expression.id,
+      expressionName: expression.name,
+      resourcesAfter: newResources,
+      npcReaction: reaction,
+    };
+
+    advanceRound(decision);
+    setStep('result');
+  };
+
+  const handleNextRound = () => {
+    if (roundNum >= 6) {
+      router.push('/result');
+    } else {
+      router.push(`/round/${roundNum + 1}`);
+    }
+  };
+
+  const bgColor = round.isDark ? '#1a1a2e' : '#FDFBF7';
+  const textColor = round.isDark ? '#e0ddd8' : '#333';
+  const subTextColor = round.isDark ? '#a0a0a0' : '#888';
+  const cardBg = round.isDark ? '#16213e' : '#fff';
+
+  return (
+    <ScrollView
+      className="flex-1"
+      style={{ backgroundColor: bgColor }}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      {/* Round Header */}
+      <View className="px-6 pt-16 pb-4">
+        <Text
+          className="text-xs mb-2"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: subTextColor }}
+        >
+          第 {roundNum} / 6 轮
+        </Text>
+        <Text
+          className="text-xl"
+          style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: textColor }}
+        >
+          {round.title}
+        </Text>
+      </View>
+
+      {/* Resources Bar */}
+      <View className="px-6 mb-4">
+        <View
+          className="flex-row justify-between p-3 rounded-xl"
+          style={{ backgroundColor: round.isDark ? '#0f3460' : '#f0eeea' }}
+        >
+          {[
+            { k: '信息卡', v: currentResources.infoCards },
+            { k: '信任', v: currentResources.trustMarks },
+            { k: '机会', v: currentResources.opportunityPoints },
+            { k: '压力', v: currentResources.pressure },
+            { k: '声誉', v: currentResources.reputation },
+          ].map((r) => (
+            <View key={r.k} className="items-center">
+              <Text
+                className="text-xs"
+                style={{
+                  fontFamily: 'YangRenDongZhuShiTi-Semibold',
+                  color: textColor,
+                }}
+              >
+                {r.v}
+              </Text>
+              <Text
+                className="text-[10px]"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: subTextColor }}
+              >
+                {r.k}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* STEP 1: Event & Private Info */}
+      {step === 'event' && (
+        <View className="px-6 gap-4 pb-10">
+          {/* Public Event */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{ backgroundColor: cardBg, borderCurve: 'continuous', boxShadow: round.isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.06)' }}
+          >
+            <Text
+              className="text-xs mb-2"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#999' }}
+            >
+              公开事件
+            </Text>
+            <Text
+              className="text-sm leading-relaxed"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: textColor }}
+            >
+              {round.publicEvent}
+            </Text>
+          </View>
+
+          {/* Dream narrative for round 3 */}
+          {round.dreamNarrative && (
+            <Pressable
+              onPress={() => setShowDream(!showDream)}
+              className="p-5 rounded-2xl"
+              style={{
+                backgroundColor: '#0f0f1a',
+                borderCurve: 'continuous',
+                borderWidth: 1,
+                borderColor: '#333',
+              }}
+            >
+              <View className="flex-row items-center justify-between mb-2">
+                <Text
+                  className="text-xs"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+                >
+                  梦境提示（点击展开）
+                </Text>
+                <ChevronDown
+                  size={14}
+                  style={{ color: '#888', transform: [{ rotate: showDream ? '180deg' : '0deg' }] }}
+                />
+              </View>
+              {showDream && (
+                <Text
+                  className="text-sm leading-relaxed"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#ccc' }}
+                >
+                  {round.dreamNarrative}
+                </Text>
+              )}
+            </Pressable>
+          )}
+
+          {/* Private Info */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{
+              backgroundColor: round.isDark ? '#1a1a2e' : '#fff',
+              borderCurve: 'continuous',
+              borderWidth: 1,
+              borderColor: round.isDark ? '#333' : '#e5e5e5',
+            }}
+          >
+            <View className="flex-row items-center gap-2 mb-2">
+              <Lock size={14} style={{ color: '#8B7355' }} />
+              <Text
+                className="text-xs"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#8B7355' }}
+              >
+                私密信息
+              </Text>
+            </View>
+            <Text
+              className="text-sm leading-relaxed"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: textColor }}
+            >
+              {round.privateInfo}
+            </Text>
+          </View>
+
+          {/* Continue Button */}
+          <Pressable
+            onPress={() => setStep('action')}
+            className="py-4 rounded-2xl items-center flex-row justify-center gap-2"
+            style={{ backgroundColor: round.isDark ? '#e0ddd8' : '#333', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-base"
+              style={{
+                fontFamily: 'YangRenDongZhuShiTi-Semibold',
+                color: round.isDark ? '#1a1a2e' : '#FDFBF7',
+              }}
+            >
+              选择行动
+            </Text>
+            <ChevronRight
+              size={18}
+              style={{ color: round.isDark ? '#1a1a2e' : '#FDFBF7' }}
+            />
+          </Pressable>
+        </View>
+      )}
+
+      {/* STEP 2: Choose Action Card */}
+      {step === 'action' && (
+        <View className="px-6 gap-3 pb-10">
+          <Text
+            className="text-base mb-2"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: textColor }}
+          >
+            选择行动卡
+          </Text>
+          {ACTION_CARDS.map((action) => {
+            const disabled = currentResources.pressure > 70 && (action.id === 'support' || action.id === 'clarify');
+            return (
+              <Pressable
+                key={action.id}
+                onPress={() => {
+                  if (disabled) return;
+                  setSelectedAction(action);
+                  setStep('target');
+                }}
+                className={cn(
+                  'p-4 rounded-xl border flex-row items-center gap-3',
+                  disabled ? 'opacity-40' : ''
+                )}
+                style={{
+                  borderCurve: 'continuous',
+                  borderColor: selectedAction?.id === action.id ? '#333' : '#e5e5e5',
+                  backgroundColor: selectedAction?.id === action.id ? '#f0eeea' : cardBg,
+                }}
+              >
+                <View
+                  className="w-9 h-9 rounded-lg items-center justify-center"
+                  style={{ backgroundColor: round.isDark ? '#0f3460' : '#f0eeea' }}
+                >
+                  {ACTION_ICONS[action.icon]}
+                </View>
+                <View className="flex-1">
+                  <View className="flex-row items-center gap-2">
+                    <Text
+                      className="text-sm"
+                      style={{
+                        fontFamily: 'YangRenDongZhuShiTi-Semibold',
+                        color: textColor,
+                      }}
+                    >
+                      {action.name}
+                    </Text>
+                    {disabled && (
+                      <Text
+                        className="text-[10px] px-1.5 py-0.5 rounded"
+                        style={{
+                          fontFamily: 'YangRenDongZhuShiTi-Regular',
+                          color: '#cc6666',
+                          backgroundColor: '#ffeeee',
+                        }}
+                      >
+                        压力过高不可用
+                      </Text>
+                    )}
+                  </View>
+                  <Text
+                    className="text-xs mt-0.5"
+                    style={{
+                      fontFamily: 'YangRenDongZhuShiTi-Regular',
+                      color: subTextColor,
+                    }}
+                  >
+                    {action.desc}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      {/* STEP 3: Choose Target */}
+      {step === 'target' && selectedAction && (
+        <View className="px-6 gap-3 pb-10">
+          <View className="flex-row items-center gap-2 mb-2">
+            <Pressable onPress={() => setStep('action')}>
+              <Text style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#999' }}>
+                ← 返回
+              </Text>
+            </Pressable>
+          </View>
+          <Text
+            className="text-base mb-2"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: textColor }}
+          >
+            对 谁 使 用「{selectedAction.name}」？
+          </Text>
+          {TARGETS.map((target) => (
+            <Pressable
+              key={target.id}
+              onPress={() => {
+                setSelectedTarget(target);
+                setStep('expression');
+              }}
+              className="p-4 rounded-xl border"
+              style={{
+                borderCurve: 'continuous',
+                borderColor: selectedTarget?.id === target.id ? '#333' : '#e5e5e5',
+                backgroundColor: selectedTarget?.id === target.id ? '#f0eeea' : cardBg,
+              }}
+            >
+              <Text
+                className="text-sm"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: textColor }}
+              >
+                {target.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {/* STEP 4: Choose Expression */}
+      {step === 'expression' && selectedAction && selectedTarget && (
+        <View className="px-6 gap-3 pb-10">
+          <View className="flex-row items-center gap-2 mb-2">
+            <Pressable onPress={() => setStep('target')}>
+              <Text style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#999' }}>
+                ← 返回
+              </Text>
+            </Pressable>
+          </View>
+          <Text
+            className="text-base mb-2"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: textColor }}
+          >
+            用 什 么 方 式？
+          </Text>
+          {EXPRESSIONS.map((expr) => (
+            <Pressable
+              key={expr.id}
+              onPress={() => {
+                setSelectedExpression(expr);
+                applyAction(selectedAction, selectedTarget, expr);
+              }}
+              className="p-4 rounded-xl border"
+              style={{
+                borderCurve: 'continuous',
+                borderColor: '#e5e5e5',
+                backgroundColor: cardBg,
+              }}
+            >
+              <Text
+                className="text-sm"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: textColor }}
+              >
+                {expr.name}
+              </Text>
+              <Text
+                className="text-xs mt-0.5"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: subTextColor }}
+              >
+                {expr.desc}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {/* STEP 5: Result */}
+      {step === 'result' && (
+        <View className="px-6 gap-4 pb-10">
+          {/* Action Summary */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{ backgroundColor: cardBg, borderCurve: 'continuous', boxShadow: round.isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.06)' }}
+          >
+            <Text
+              className="text-xs mb-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#999' }}
+            >
+              你的行动
+            </Text>
+            <Text
+              className="text-sm leading-relaxed"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: textColor }}
+            >
+              你对 <Text style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold' }}>{selectedTarget?.name}</Text>{' '}
+              使用了「{selectedAction?.name}」，表达方式：{selectedExpression?.name}。
+            </Text>
+          </View>
+
+          {/* NPC Reaction */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{
+              backgroundColor: round.isDark ? '#1a1a2e' : '#fff',
+              borderCurve: 'continuous',
+              borderWidth: 1,
+              borderColor: round.isDark ? '#333' : '#e5e5e5',
+            }}
+          >
+            <Text
+              className="text-xs mb-2"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#8B7355' }}
+            >
+              对方反应
+            </Text>
+            <Text
+              className="text-sm leading-relaxed"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: textColor }}
+            >
+              {npcReaction}
+            </Text>
+          </View>
+
+          {/* Resource Change */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{
+              backgroundColor: round.isDark ? '#0f3460' : '#f0eeea',
+              borderCurve: 'continuous',
+            }}
+          >
+            <Text
+              className="text-xs mb-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: subTextColor }}
+            >
+              资源变化
+            </Text>
+            <View className="flex-row justify-between">
+              {[
+                { k: '信息卡', v: state.decisions[state.decisions.length - 1]?.resourcesAfter.infoCards || currentResources.infoCards },
+                { k: '信任', v: state.decisions[state.decisions.length - 1]?.resourcesAfter.trustMarks || currentResources.trustMarks },
+                { k: '机会', v: state.decisions[state.decisions.length - 1]?.resourcesAfter.opportunityPoints || currentResources.opportunityPoints },
+                { k: '压力', v: state.decisions[state.decisions.length - 1]?.resourcesAfter.pressure || currentResources.pressure },
+                { k: '声誉', v: state.decisions[state.decisions.length - 1]?.resourcesAfter.reputation || currentResources.reputation },
+              ].map((r) => (
+                <View key={r.k} className="items-center">
+                  <Text
+                    className="text-sm"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: textColor }}
+                  >
+                    {r.v}
+                  </Text>
+                  <Text
+                    className="text-[10px]"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: subTextColor }}
+                  >
+                    {r.k}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Next Button */}
+          <Pressable
+            onPress={handleNextRound}
+            className="py-4 rounded-2xl items-center flex-row justify-center gap-2"
+            style={{ backgroundColor: round.isDark ? '#e0ddd8' : '#333', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-base"
+              style={{
+                fontFamily: 'YangRenDongZhuShiTi-Semibold',
+                color: round.isDark ? '#1a1a2e' : '#FDFBF7',
+              }}
+            >
+              {roundNum >= 6 ? '进入结局' : '下一轮'}
+            </Text>
+            <ChevronRight
+              size={18}
+              style={{ color: round.isDark ? '#1a1a2e' : '#FDFBF7' }}
+            />
+          </Pressable>
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+```
+
+</action>
+<observation>
+File created successfully at: /workspace/app-brjk6jdk4ykh/src/app/round/[id].tsx
+
+</observation>
+<action>
+**FileEditAction**
+Path: [/workspace/app-brjk6jdk4ykh/src/app/result.tsx]
+Thought: 
+Command: create
+Created File with Text:
+```
+import { View, Text, ScrollView, Pressable, TextInput } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { getGameState, getPersonalityLabel, getEndingType } from '@/lib/gameStore';
+import { ENDING_TEXTS } from '@/lib/gameData';
+import { supabase } from '@/client/supabase';
+import { ChevronRight, Gavel, List, Archive, TreePine, Send } from 'lucide-react-native';
+
+type ResultTab = 'trial' | 'cost' | 'archive' | 'notes';
+
+export default function ResultScreen() {
+  const router = useRouter();
+  const state = getGameState();
+  const [activeTab, setActiveTab] = useState<ResultTab>('trial');
+  const [noteInput, setNoteInput] = useState('');
+  const [notes, setNotes] = useState<{ id: string; content: string }[]>([]);
+  const [noteError, setNoteError] = useState('');
+  const [noteSubmitted, setNoteSubmitted] = useState(false);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+
+  const finalResources = state.decisions.length > 0
+    ? state.decisions[state.decisions.length - 1].resourcesAfter
+    : state.resources;
+
+  const personality = getPersonalityLabel(finalResources, state.decisions);
+  const endingKey = getEndingType(finalResources, state.decisions);
+  const ending = ENDING_TEXTS[endingKey];
+
+  // 证据线索
+  const evidenceLines = [
+    state.decisions[1]
+      ? `你在第2轮对${state.decisions[1].targetName}使用了「${state.decisions[1].actionName}」（${state.decisions[1].expressionName}），对方的态度从那一刻起悄然改变。`
+      : '你在第2轮的选择影响了此后所有人对你的信任。',
+    state.decisions[2]
+      ? `你在第3轮选择了「${state.decisions[2].actionName}」——${state.decisions[2].actionName === '共享' ? '你选择了共赢，这在重复博弈中是明智的。' : '你选择了自保，这在短期内也许有用。'}`
+      : '你在第3轮面对囚徒困境时做出了选择。',
+    state.decisions[4]
+      ? `你在第5轮${state.decisions[4].actionId === 'clarify' ? '选择公开澄清，虽然失去了部分效率，但保住了群体信任。' : `使用了「${state.decisions[4].actionName}」，这在最终评判中留下了印迹。`}`
+      : '你在第5轮的选择，决定了最终声誉的走向。',
+    `你最终的压力值是 ${finalResources.pressure}，声誉值是 ${finalResources.reputation}，信任标记剩余 ${finalResources.trustMarks}。`,
+  ];
+
+  // Cost list
+  const costList = state.decisions.map((d, i) => {
+    const effectStr = Object.entries(ENDING_TEXTS).length > 0
+      ? `${d.actionName} → 信任${d.resourcesAfter.trustMarks > (i > 0 ? state.decisions[i - 1].resourcesAfter.trustMarks : state.resources.trustMarks) ? '+' : ''}${d.resourcesAfter.trustMarks - (i > 0 ? state.decisions[i - 1].resourcesAfter.trustMarks : state.resources.trustMarks)}`
+      : `${d.actionName}`;
+    return {
+      round: d.round,
+      action: `${d.actionName}·${d.targetName}·${d.expressionName}`,
+      effect: effectStr,
+      reaction: d.npcReaction.slice(0, 36) + (d.npcReaction.length > 36 ? '…' : ''),
+    };
+  });
+
+  const fetchNotes = async () => {
+    setLoadingNotes(true);
+    const { data } = await supabase.from('notes').select('id, content').order('created_at', { ascending: false }).limit(20);
+    if (data) setNotes(data);
+    setLoadingNotes(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'notes') fetchNotes();
+  }, [activeTab]);
+
+  const submitNote = async () => {
+    if (!noteInput.trim()) { setNoteError('请输入你的感悟'); return; }
+    if (noteInput.trim().length > 200) { setNoteError('最多200字'); return; }
+    const { error } = await supabase.from('notes').insert({ content: noteInput.trim() });
+    if (!error) {
+      setNoteSubmitted(true);
+      setNoteInput('');
+      setNoteError('');
+      fetchNotes();
+    } else {
+      setNoteError('提交失败，请重试');
+    }
+  };
+
+  const TABS: { key: ResultTab; label: string; icon: React.ReactNode }[] = [
+    { key: 'trial', label: '庭审', icon: <Gavel size={16} /> },
+    { key: 'cost', label: '代价', icon: <List size={16} /> },
+    { key: 'archive', label: '档案', icon: <Archive size={16} /> },
+    { key: 'notes', label: '留言', icon: <TreePine size={16} /> },
+  ];
+
+  const isCourt = activeTab === 'trial';
+
+  return (
+    <ScrollView
+      className="flex-1"
+      style={{ backgroundColor: isCourt ? '#3E2723' : '#FDFBF7' }}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      {/* Tab Bar */}
+      <View
+        className="flex-row mt-16 mx-6 rounded-2xl p-1"
+        style={{ backgroundColor: isCourt ? '#4A3728' : '#f0eeea' }}
+      >
+        {TABS.map((tab) => (
+          <Pressable
+            key={tab.key}
+            onPress={() => setActiveTab(tab.key)}
+            className="flex-1 py-2 rounded-xl items-center flex-row justify-center gap-1"
+            style={{
+              backgroundColor: activeTab === tab.key
+                ? (isCourt || tab.key === 'trial' ? (tab.key === 'trial' ? '#6D4C41' : '#fff') : '#fff')
+                : 'transparent',
+              borderCurve: 'continuous',
+            }}
+          >
+            <Text
+              className="text-xs"
+              style={{
+                fontFamily: 'YangRenDongZhuShiTi-Regular',
+                color: activeTab === tab.key
+                  ? (isCourt ? '#e0ddd8' : '#333')
+                  : '#999',
+              }}
+            >
+              {tab.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* TAB: Courtroom */}
+      {activeTab === 'trial' && (
+        <View className="px-6 py-6 gap-5">
+          <Text
+            className="text-center text-xl mt-2"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#F5F0E8' }}
+          >
+            {ending.title}
+          </Text>
+          <Text
+            className="text-center text-sm leading-relaxed"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#c5b9a8' }}
+          >
+            {ending.desc}
+          </Text>
+
+          {/* Players Row */}
+          <View className="flex-row justify-around py-4">
+            {['你', '林亦然', '许知夏', '沈砚'].map((name) => (
+              <View key={name} className="items-center gap-2">
+                <View
+                  className="w-12 h-12 rounded-full items-center justify-center"
+                  style={{ backgroundColor: '#6D4C41' }}
+                >
+                  <Text
+                    className="text-sm"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#F5F0E8' }}
+                  >
+                    {name[0]}
+                  </Text>
+                </View>
+                <Text
+                  className="text-xs"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#a08070' }}
+                >
+                  {name}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Verdict */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{ backgroundColor: '#4A3728', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-xs mb-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#a08070' }}
+            >
+              法官宣读判决书
+            </Text>
+            {ending.lines.map((line, i) => (
+              <Text
+                key={i}
+                className="text-sm mb-2"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#e0ddd8' }}
+              >
+                · {line}
+              </Text>
+            ))}
+          </View>
+
+          {/* Evidence */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{ backgroundColor: '#4A3728', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-xs mb-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#a08070' }}
+            >
+              关键证据
+            </Text>
+            {evidenceLines.map((line, i) => (
+              <Text
+                key={i}
+                className="text-sm mb-3 leading-relaxed"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#c5b9a8' }}
+              >
+                {i + 1}. {line}
+              </Text>
+            ))}
+          </View>
+
+          <Pressable
+            onPress={() => setActiveTab('cost')}
+            className="py-4 rounded-2xl items-center flex-row justify-center gap-2"
+            style={{ backgroundColor: '#8D6E63', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-base"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#FDFBF7' }}
+            >
+              查看代价清单
+            </Text>
+            <ChevronRight size={18} style={{ color: '#FDFBF7' }} />
+          </Pressable>
+        </View>
+      )}
+
+      {/* TAB: Cost List */}
+      {activeTab === 'cost' && (
+        <View className="px-6 py-6 gap-4">
+          <Text
+            className="text-xl"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+          >
+            代价清单
+          </Text>
+          <Text
+            className="text-xs leading-relaxed"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+          >
+            每一次选择，都有它的代价。
+          </Text>
+
+          {costList.map((item) => (
+            <View
+              key={item.round}
+              className="p-4 rounded-xl bg-white"
+              style={{ borderCurve: 'continuous', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+            >
+              <View className="flex-row items-center gap-2 mb-2">
+                <View
+                  className="w-6 h-6 rounded-full items-center justify-center"
+                  style={{ backgroundColor: '#f0eeea' }}
+                >
+                  <Text
+                    className="text-xs"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#666' }}
+                  >
+                    {item.round}
+                  </Text>
+                </View>
+                <Text
+                  className="text-sm"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+                >
+                  {item.action}
+                </Text>
+              </View>
+              <Text
+                className="text-xs leading-relaxed"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+              >
+                {item.reaction}
+              </Text>
+            </View>
+          ))}
+
+          {costList.length === 0 && (
+            <Text style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#aaa' }}>
+              还没有决策记录
+            </Text>
+          )}
+
+          <Pressable
+            onPress={() => setActiveTab('archive')}
+            className="py-4 rounded-2xl items-center flex-row justify-center gap-2 mt-2"
+            style={{ backgroundColor: '#333', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-base"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#FDFBF7' }}
+            >
+              查看命运档案
+            </Text>
+            <ChevronRight size={18} style={{ color: '#FDFBF7' }} />
+          </Pressable>
+        </View>
+      )}
+
+      {/* TAB: Fate Archive */}
+      {activeTab === 'archive' && (
+        <View className="px-6 py-6 gap-5">
+          <Text
+            className="text-xl"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+          >
+            命运档案
+          </Text>
+
+          {/* Personality Label */}
+          <View
+            className="p-6 rounded-2xl items-center"
+            style={{ backgroundColor: '#f0eeea', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-xs mb-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+            >
+              你的人格标签
+            </Text>
+            <Text
+              className="text-2xl mb-4"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+            >
+              {personality.label}
+            </Text>
+            <Text
+              className="text-sm text-center leading-relaxed"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#666' }}
+            >
+              {personality.desc}
+            </Text>
+          </View>
+
+          {/* Stats */}
+          <View
+            className="p-5 rounded-2xl bg-white"
+            style={{ borderCurve: 'continuous', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+          >
+            <Text
+              className="text-sm mb-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+            >
+              最终资源
+            </Text>
+            <View className="flex-row flex-wrap gap-3">
+              {[
+                { k: '信息卡', v: finalResources.infoCards },
+                { k: '信任标记', v: finalResources.trustMarks },
+                { k: '机会点', v: finalResources.opportunityPoints },
+                { k: '压力值', v: finalResources.pressure },
+                { k: '声誉值', v: finalResources.reputation },
+              ].map((r) => (
+                <View key={r.k} className="px-3 py-2 rounded-lg" style={{ backgroundColor: '#f5f3ef' }}>
+                  <Text
+                    className="text-base"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+                  >
+                    {r.v}
+                  </Text>
+                  <Text
+                    className="text-xs"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+                  >
+                    {r.k}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Original Wish */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{ backgroundColor: '#fff9f0', borderCurve: 'continuous', borderWidth: 1, borderColor: '#ede8df' }}
+          >
+            <Text
+              className="text-xs mb-2"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#8B7355' }}
+            >
+              你当初的愿望
+            </Text>
+            <Text
+              className="text-sm leading-relaxed italic"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#555' }}
+            >
+              "{state.wish || '（未许愿）'}"
+            </Text>
+            <Text
+              className="text-xs mt-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#aaa' }}
+            >
+              现在的你，和那时的你，有什么不一样？
+            </Text>
+          </View>
+
+          <Pressable
+            onPress={() => setActiveTab('notes')}
+            className="py-4 rounded-2xl items-center flex-row justify-center gap-2"
+            style={{ backgroundColor: '#333', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-base"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#FDFBF7' }}
+            >
+              去留言墙
+            </Text>
+            <ChevronRight size={18} style={{ color: '#FDFBF7' }} />
+          </Pressable>
+        </View>
+      )}
+
+      {/* TAB: Notes Wall */}
+      {activeTab === 'notes' && (
+        <View className="px-6 py-6 gap-5">
+          <View className="items-center mb-2">
+            <TreePine size={32} style={{ color: '#5B8C5A' }} />
+          </View>
+          <Text
+            className="text-xl text-center"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+          >
+            许愿树
+          </Text>
+          <Text
+            className="text-sm text-center leading-relaxed"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+          >
+            仰望着这棵参天大树，{"\n"}
+            你发现树叶上挂满了千千万万的便利贴。{"\n"}
+            每一张，都是曾经路过这里的人留下的。
+          </Text>
+
+          {/* Reflection Questions */}
+          <View
+            className="p-5 rounded-2xl"
+            style={{ backgroundColor: '#f5f3ef', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-xs mb-3"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#888' }}
+            >
+              此刻，你有一些问题……
+            </Text>
+            {[
+              '如果我全程合作，会不会被利用？',
+              '如果我全程自保，会不会赢但失去信任？',
+              '如果我精算平衡，会不会最后没有人真正相信我？',
+              '那我当时，到底为什么那么选？',
+            ].map((q, i) => (
+              <Text
+                key={i}
+                className="text-sm leading-relaxed mb-2"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#666' }}
+              >
+                · {q}
+              </Text>
+            ))}
+          </View>
+
+          {/* Submit Note */}
+          {!noteSubmitted && (
+            <View
+              className="p-5 rounded-2xl bg-white"
+              style={{ borderCurve: 'continuous', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+            >
+              <Text
+                className="text-sm mb-3"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#333' }}
+              >
+                留下你的骄傲与遗憾
+              </Text>
+              <TextInput
+                value={noteInput}
+                onChangeText={setNoteInput}
+                placeholder="在此刻，你想说些什么……"
+                placeholderTextColor="#ccc"
+                multiline
+                className="p-3 rounded-xl text-sm"
+                style={{
+                  fontFamily: 'YangRenDongZhuShiTi-Regular',
+                  color: '#333',
+                  backgroundColor: '#fafaf8',
+                  borderColor: noteError ? '#cc6666' : '#e5e5e5',
+                  borderWidth: 1,
+                  borderCurve: 'continuous',
+                  textAlignVertical: 'top',
+                  minHeight: 80,
+                }}
+              />
+              {noteError ? (
+                <Text
+                  className="text-xs mt-1"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#cc6666' }}
+                >
+                  {noteError}
+                </Text>
+              ) : null}
+              <Pressable
+                onPress={submitNote}
+                className="flex-row items-center justify-center gap-2 py-3 rounded-xl mt-3"
+                style={{ backgroundColor: '#5B8C5A' }}
+              >
+                <Send size={14} style={{ color: '#fff' }} />
+                <Text
+                  className="text-sm"
+                  style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#fff' }}
+                >
+                  挂到树上
+                </Text>
+              </Pressable>
+            </View>
+          )}
+          {noteSubmitted && (
+            <View className="items-center py-3">
+              <Text
+                className="text-sm"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#5B8C5A' }}
+              >
+                ✓ 你的便利贴已挂上去了
+              </Text>
+            </View>
+          )}
+
+          {/* Other Notes */}
+          {loadingNotes ? (
+            <Text style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#aaa', textAlign: 'center' }}>
+              加载中……
+            </Text>
+          ) : (
+            <View className="gap-3">
+              <Text
+                className="text-xs"
+                style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#aaa' }}
+              >
+                树叶上的便利贴——
+              </Text>
+              {notes.map((note) => (
+                <View
+                  key={note.id}
+                  className="p-4 rounded-xl"
+                  style={{
+                    backgroundColor: '#fffde7',
+                    borderCurve: 'continuous',
+                    borderWidth: 1,
+                    borderColor: '#ede8cf',
+                    transform: [{ rotate: `${Math.random() * 2 - 1}deg` }],
+                  }}
+                >
+                  <Text
+                    className="text-sm leading-relaxed"
+                    style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#555' }}
+                  >
+                    {note.content}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Closing */}
+          <Text
+            className="text-center text-sm leading-relaxed mt-4 mb-2"
+            style={{ fontFamily: 'YangRenDongZhuShiTi-Regular', color: '#aaa' }}
+          >
+            不管怎么样，不管得失如何，{"\n"}
+            你都在二十岁，又成长了一点。
+          </Text>
+
+          <Pressable
+            onPress={() => router.replace('/')}
+            className="py-4 rounded-2xl items-center"
+            style={{ backgroundColor: '#f0eeea', borderCurve: 'continuous' }}
+          >
+            <Text
+              className="text-base"
+              style={{ fontFamily: 'YangRenDongZhuShiTi-Semibold', color: '#666' }}
+            >
+              返回首页
+            </Text>
+          </Pressable>
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+```
+
+</action>
