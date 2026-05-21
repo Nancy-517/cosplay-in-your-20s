@@ -2,7 +2,7 @@
   "expo": {
     "name": "人生地图 Life Map",
     "slug": "life-map",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
